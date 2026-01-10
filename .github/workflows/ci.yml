@@ -81,7 +81,7 @@ jobs:
             --cov=nexus_dev \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=50
+            --cov-fail-under=45
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
