@@ -1,5 +1,11 @@
 # Nexus-Dev
 
+[![CI](https://github.com/mmornati/nexus-dev/actions/workflows/ci.yml/badge.svg)](https://github.com/mmornati/nexus-dev/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/mmornati/nexus-dev/graph/badge.svg)](https://codecov.io/gh/mmornati/nexus-dev)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 **Persistent Memory for AI Coding Agents**
 
 Nexus-Dev is an open-source MCP (Model Context Protocol) server that provides a local RAG (Retrieval-Augmented Generation) system for AI coding assistants like GitHub Copilot, Cursor, and Windsurf. It learns from your codebase and mistakes, enabling cross-project knowledge sharing.
