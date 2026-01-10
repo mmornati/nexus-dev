@@ -1,6 +1,5 @@
 """Tests for database module."""
 
-import pytest
 from nexus_dev.database import (
     Document,
     DocumentType,

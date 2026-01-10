@@ -1,9 +1,10 @@
 """Pytest configuration and fixtures for Nexus-Dev tests."""
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
+import tempfile
+from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
@@ -67,7 +68,7 @@ async def async_fetch(url: str) -> str:
 @pytest.fixture
 def sample_javascript_code():
     """Sample JavaScript code for chunker tests."""
-    return '''// Sample JavaScript module
+    return """// Sample JavaScript module
 
 import { something } from 'module';
 
@@ -96,13 +97,13 @@ class Calculator {
 }
 
 export { greet, add, Calculator };
-'''
+"""
 
 
 @pytest.fixture
 def sample_typescript_code():
     """Sample TypeScript code for chunker tests."""
-    return '''// Sample TypeScript module
+    return """// Sample TypeScript module
 
 interface User {
     name: string;
@@ -131,13 +132,13 @@ class Calculator {
 }
 
 export { greet, add, Calculator };
-'''
+"""
 
 
 @pytest.fixture
 def sample_java_code():
     """Sample Java code for chunker tests."""
-    return '''package com.example;
+    return """package com.example;
 
 import java.util.List;
 
@@ -170,13 +171,13 @@ public class Calculator {
         return this.value;
     }
 }
-'''
+"""
 
 
 @pytest.fixture
 def sample_markdown():
     """Sample Markdown documentation for chunker tests."""
-    return '''# Project Documentation
+    return """# Project Documentation
 
 This is the introduction to the project.
 
@@ -214,13 +215,13 @@ Here's how to use the library.
 ## Contributing
 
 See CONTRIBUTING.md for guidelines.
-'''
+"""
 
 
 @pytest.fixture
 def sample_rst():
     """Sample RST documentation for chunker tests."""
-    return '''Project Documentation
+    return """Project Documentation
 =====================
 
 This is the introduction.
@@ -241,7 +242,7 @@ Usage
 -----
 
 Here's how to use it.
-'''
+"""
 
 
 @pytest.fixture

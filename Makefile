@@ -82,23 +82,28 @@ install-dev: $(VENV_DIR)/bin/activate ## Install package with dev dependencies
 # Code Quality
 #------------------------------------------------------------------------------
 
-lint: ## Run linter (ruff)
+lint: ## Run linter (ruff) - will fail on errors
 	@echo "$(BLUE)Running linter...$(NC)"
-	@$(VENV_DIR)/bin/ruff check src/ tests/ || true
+	@$(VENV_DIR)/bin/ruff check src/ tests/
 	@echo "$(GREEN)✓ Linting complete$(NC)"
 
 format: ## Format code (ruff format)
 	@echo "$(BLUE)Formatting code...$(NC)"
 	@$(VENV_DIR)/bin/ruff format src/ tests/
-	@$(VENV_DIR)/bin/ruff check --fix src/ tests/ || true
+	@$(VENV_DIR)/bin/ruff check --fix src/ tests/
 	@echo "$(GREEN)✓ Code formatted$(NC)"
+
+format-check: ## Check code formatting without modifying (CI-style)
+	@echo "$(BLUE)Checking code formatting...$(NC)"
+	@$(VENV_DIR)/bin/ruff format --check src/ tests/
+	@echo "$(GREEN)✓ Formatting check complete$(NC)"
 
 type-check: ## Run type checker (mypy)
 	@echo "$(BLUE)Running type checker...$(NC)"
-	@$(VENV_DIR)/bin/mypy src/ || true
+	@$(VENV_DIR)/bin/mypy src/
 	@echo "$(GREEN)✓ Type checking complete$(NC)"
 
-check: lint type-check ## Run all code quality checks
+check: lint format-check type-check ## Run all code quality checks (CI-aligned)
 
 #------------------------------------------------------------------------------
 # Testing

@@ -1,7 +1,8 @@
 """Tests for base chunker and fallback chunker."""
 
 import pytest
-from nexus_dev.chunkers.base import FallbackChunker, ChunkType, CodeChunk
+
+from nexus_dev.chunkers.base import ChunkType, CodeChunk, FallbackChunker
 
 
 class TestFallbackChunker:
@@ -43,7 +44,7 @@ class TestFallbackChunker:
 
         if len(chunks) >= 2:
             # Check that there's some overlap between consecutive chunks
-            chunk1_end = chunks[0].content[-100:]
+            _chunk1_end = chunks[0].content[-100:]  # noqa: F841
             # Overlap may or may not exist depending on newline locations
             assert len(chunks[0].content) > 0
 

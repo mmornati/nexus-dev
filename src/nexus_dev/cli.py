@@ -9,12 +9,12 @@ Provides commands for:
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
 import stat
+from collections.abc import Coroutine
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import click
 
@@ -24,20 +24,19 @@ from .database import Document, DocumentType, NexusDatabase, generate_document_i
 from .embeddings import create_embedder
 
 
-def _run_async(coro):
+def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run async function in sync context."""
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
 @click.group()
 @click.version_option(version="0.1.0", prog_name="nexus-dev")
-def cli():
+def cli() -> None:
     """Nexus-Dev CLI - Local RAG for AI coding agents.
 
     Nexus-Dev provides persistent memory for AI coding assistants by indexing
     your code and documentation into a local vector database.
     """
-    pass
 
 
 @cli.command("init")
@@ -83,12 +82,12 @@ def init_command(
         embedding_provider=embedding_provider,
     )
     config.save(config_path)
-    click.echo(f"✅ Created nexus_config.json")
+    click.echo("✅ Created nexus_config.json")
 
     # Create .nexus/lessons directory
     lessons_dir = cwd / ".nexus" / "lessons"
     lessons_dir.mkdir(parents=True, exist_ok=True)
-    click.echo(f"✅ Created .nexus/lessons/")
+    click.echo("✅ Created .nexus/lessons/")
 
     # Create .gitkeep so the directory is tracked
     gitkeep = lessons_dir / ".gitkeep"
@@ -142,14 +141,15 @@ def _install_hook(cwd: Path) -> None:
         shutil.copy(template_path, hook_path)
     else:
         # Write inline
-        hook_content = '''#!/bin/bash
+        hook_content = """#!/bin/bash
 # Nexus-Dev Pre-commit Hook
 
 set -e
 
 echo "🧠 Nexus-Dev: Checking for files to index..."
 
-MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\\.(py|js|jsx|ts|tsx|java)$' || true)
+MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACM | \
+  grep -E '\\.(py|js|jsx|ts|tsx|java)$' || true)
 
 if [ -n "$MODIFIED_FILES" ]; then
     echo "📁 Indexing modified code files..."
@@ -160,7 +160,8 @@ if [ -n "$MODIFIED_FILES" ]; then
     done
 fi
 
-LESSON_FILES=$(git diff --cached --name-only --diff-filter=A | grep -E '^\\.nexus/lessons/.*\\.md$' || true)
+LESSON_FILES=$(git diff --cached --name-only --diff-filter=A | \
+  grep -E '^\\.nexus/lessons/.*\\.md$' || true)
 
 if [ -n "$LESSON_FILES" ]; then
     echo "📚 Indexing new lessons..."
@@ -172,7 +173,7 @@ if [ -n "$LESSON_FILES" ]; then
 fi
 
 echo "✅ Nexus-Dev indexing complete"
-'''
+"""
         hook_path.write_text(hook_content)
 
     # Make executable
@@ -185,12 +186,14 @@ echo "✅ Nexus-Dev indexing complete"
 @cli.command("index")
 @click.argument("paths", nargs=-1, required=True)
 @click.option(
-    "-r", "--recursive",
+    "-r",
+    "--recursive",
     is_flag=True,
     help="Index directories recursively",
 )
 @click.option(
-    "-q", "--quiet",
+    "-q",
+    "--quiet",
     is_flag=True,
     help="Suppress output",
 )
@@ -296,10 +299,10 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
 
 
 async def _index_chunks_sync(
-    chunks: list,
+    chunks: list[Any],
     project_id: str,
     doc_type: DocumentType,
-    embedder,
+    embedder: Any,
     database: NexusDatabase,
 ) -> int:
     """Index chunks synchronously."""
@@ -310,7 +313,7 @@ async def _index_chunks_sync(
     embeddings = await embedder.embed_batch(texts)
 
     documents = []
-    for chunk, embedding in zip(chunks, embeddings):
+    for chunk, embedding in zip(chunks, embeddings, strict=True):
         doc_id = generate_document_id(
             project_id,
             chunk.file_path,
@@ -434,7 +437,7 @@ def status_command() -> None:
 
     config = NexusConfig.load(config_path)
 
-    click.echo(f"📊 Nexus-Dev Status")
+    click.echo("📊 Nexus-Dev Status")
     click.echo("")
     click.echo(f"Project: {config.project_name}")
     click.echo(f"Project ID: {config.project_id}")
@@ -533,15 +536,16 @@ def reindex_command() -> None:
 
 
 # Entry points for pyproject.toml scripts
-def init_command_entry():
+def init_command_entry() -> None:
     """Entry point for nexus-init."""
     cli(["init"])
 
 
-def index_command_entry():
+def index_command_entry() -> None:
     """Entry point for nexus-index."""
     # Get args after the command name
     import sys
+
     cli(["index"] + sys.argv[1:])
 
 

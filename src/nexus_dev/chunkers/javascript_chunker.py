@@ -263,9 +263,7 @@ class JavaScriptChunker(BaseChunker):
             pass
         return None
 
-    def _create_module_chunk(
-        self, file_path: str, content: str, language: str
-    ) -> CodeChunk:
+    def _create_module_chunk(self, file_path: str, content: str, language: str) -> CodeChunk:
         """Create a module-level chunk for the entire file."""
         name = file_path.split("/")[-1] if "/" in file_path else file_path
         return CodeChunk(

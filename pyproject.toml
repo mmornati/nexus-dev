@@ -61,13 +61,45 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM"]
-ignore = ["ANN101", "ANN102"]
+# SIM105: try-except-pass used intentionally for silent failures
+# ANN401: Any type required for tree-sitter nodes
+ignore = ["SIM105", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN"]  # No type annotations required in tests
+"tests/conftest.py" = ["ANN", "W293"]  # W293: Whitespace in string literals is intentional
 
 [tool.mypy]
 python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+# Ignore missing stubs for external libraries without type annotations
+[[tool.mypy.overrides]]
+module = [
+    "lancedb",
+    "lancedb.*",
+    "pyarrow",
+    "pyarrow.*",
+    "tree_sitter",
+    "tree_sitter.*",
+    "tree_sitter_language_pack",
+    "tree_sitter_language_pack.*",
+]
+ignore_missing_imports = true
+
+# Allow less strict typing for modules heavily interfacing with untyped libraries
+[[tool.mypy.overrides]]
+module = [
+    "nexus_dev.database",
+    "nexus_dev.embeddings",
+    "nexus_dev.chunkers.python_chunker",
+    "nexus_dev.chunkers.javascript_chunker",
+    "nexus_dev.chunkers.java_chunker",
+]
+warn_return_any = false
+disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

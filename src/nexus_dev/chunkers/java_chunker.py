@@ -99,9 +99,7 @@ class JavaChunker(BaseChunker):
                                 chunks.append(constructor_chunk)
                         # Recurse for inner classes
                         elif member.type == "class_declaration":
-                            self._walk_tree(
-                                member, lines, file_path, chunks, imports, class_name
-                            )
+                            self._walk_tree(member, lines, file_path, chunks, imports, class_name)
 
         elif node.type == "interface_declaration":
             chunk = self._extract_interface(node, lines, file_path, imports)
@@ -129,11 +127,7 @@ class JavaChunker(BaseChunker):
         """
         imports = []
         for child in root.children:
-            if child.type == "package_declaration":
-                start = child.start_point[0]
-                end = child.end_point[0]
-                imports.append("\n".join(lines[start : end + 1]))
-            elif child.type == "import_declaration":
+            if child.type == "package_declaration" or child.type == "import_declaration":
                 start = child.start_point[0]
                 end = child.end_point[0]
                 imports.append("\n".join(lines[start : end + 1]))
@@ -165,7 +159,7 @@ class JavaChunker(BaseChunker):
             line = lines[i].strip()
             if line.endswith("*/"):
                 # Found end of comment, find start
-                doc_lines = []
+                doc_lines: list[str] = []
                 for j in range(i, max(-1, i - 50), -1):
                     doc_lines.insert(0, lines[j])
                     if lines[j].strip().startswith("/**"):

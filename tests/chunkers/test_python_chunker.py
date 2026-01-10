@@ -1,8 +1,9 @@
 """Tests for Python chunker."""
 
 import pytest
-from nexus_dev.chunkers.python_chunker import PythonChunker
+
 from nexus_dev.chunkers.base import ChunkType
+from nexus_dev.chunkers.python_chunker import PythonChunker
 
 
 class TestPythonChunker:
@@ -56,7 +57,9 @@ def hello(name: str) -> str:
         """Test extracting async functions."""
         chunks = chunker.chunk_content(sample_python_code, "test.py")
 
-        async_chunks = [c for c in chunks if "async" in c.content.lower() and c.name == "async_fetch"]
+        async_chunks = [
+            c for c in chunks if "async" in c.content.lower() and c.name == "async_fetch"
+        ]
         assert len(async_chunks) >= 1
 
     def test_chunk_with_docstrings(self, chunker, sample_python_code):
@@ -79,23 +82,23 @@ def hello(name: str) -> str:
 
     def test_chunk_syntax_error_fallback(self, chunker):
         """Test fallback for files with syntax errors."""
-        code = '''
+        code = """
 def broken(
     # Missing closing paren
     pass
-'''
+"""
         # Should not raise, should return module-level chunk
         chunks = chunker.chunk_content(code, "broken.py")
         assert len(chunks) >= 0  # Should handle gracefully
 
     def test_line_numbers_correct(self, chunker):
         """Test that line numbers are correctly tracked."""
-        code = '''# Comment line 1
+        code = """# Comment line 1
 # Comment line 2
 
 def my_function():
     pass
-'''
+"""
         chunks = chunker.chunk_content(code, "test.py")
         func_chunk = next(c for c in chunks if c.name == "my_function")
 
@@ -105,12 +108,12 @@ def my_function():
 
     def test_nested_functions_included(self, chunker):
         """Test that nested functions are included in parent."""
-        code = '''
+        code = """
 def outer():
     def inner():
         pass
     return inner()
-'''
+"""
         chunks = chunker.chunk_content(code, "test.py")
         outer_chunk = next(c for c in chunks if c.name == "outer")
 

@@ -77,13 +77,7 @@ class PythonChunker(BaseChunker):
             imports: List of import statements.
             parent: Parent class name if inside a class.
         """
-        if node.type == "function_definition":
-            chunk = self._extract_function(node, lines, file_path, imports, parent)
-            if chunk:
-                chunks.append(chunk)
-            # Don't recurse into functions (nested functions are included)
-
-        elif node.type == "async_function_definition":
+        if node.type == "function_definition" or node.type == "async_function_definition":
             chunk = self._extract_function(node, lines, file_path, imports, parent)
             if chunk:
                 chunks.append(chunk)
@@ -164,9 +158,14 @@ class PythonChunker(BaseChunker):
                                 start = expr_child.start_point[0]
                                 end = expr_child.end_point[0]
                                 docstring = "\n".join(lines[start : end + 1])
-                                # Clean up the docstring
-                                docstring = docstring.strip().strip('"""').strip("'''")
-                                return docstring
+                                # Clean up the docstring (remove triple quotes)
+                                docstring = docstring.strip()
+                                for quote in ('"""', "'''"):
+                                    if docstring.startswith(quote):
+                                        docstring = docstring[3:]
+                                    if docstring.endswith(quote):
+                                        docstring = docstring[:-3]
+                                return docstring.strip()
                         break
                 break
         return None

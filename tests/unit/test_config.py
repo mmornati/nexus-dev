@@ -1,8 +1,9 @@
 """Tests for Nexus-Dev configuration module."""
 
 import json
+
 import pytest
-from pathlib import Path
+
 from nexus_dev.config import NexusConfig
 
 

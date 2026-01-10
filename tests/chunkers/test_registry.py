@@ -1,14 +1,12 @@
 """Tests for the chunker registry."""
 
-import pytest
 from nexus_dev.chunkers import (
     ChunkerRegistry,
-    PythonChunker,
-    JavaScriptChunker,
-    TypeScriptChunker,
-    JavaChunker,
     DocumentationChunker,
-    ChunkType,
+    JavaChunker,
+    JavaScriptChunker,
+    PythonChunker,
+    TypeScriptChunker,
 )
 
 

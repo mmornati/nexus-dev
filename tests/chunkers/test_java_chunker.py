@@ -1,8 +1,9 @@
 """Tests for Java chunker."""
 
 import pytest
-from nexus_dev.chunkers.java_chunker import JavaChunker
+
 from nexus_dev.chunkers.base import ChunkType
+from nexus_dev.chunkers.java_chunker import JavaChunker
 
 
 class TestJavaChunker:
@@ -43,24 +44,28 @@ class TestJavaChunker:
         chunks = chunker.chunk_content(sample_java_code, "Calculator.java")
 
         # Constructor should be treated as a method with class name
-        constructor_chunks = [c for c in chunks if "Calculator" in c.name and "initial" in c.content]
+        constructor_chunks = [
+            c for c in chunks if "Calculator" in c.name and "initial" in c.content
+        ]
         assert len(constructor_chunks) >= 1
 
     def test_chunk_javadoc(self, chunker, sample_java_code):
         """Test that Javadoc comments are extracted."""
         chunks = chunker.chunk_content(sample_java_code, "Calculator.java")
 
-        calc_class = next(c for c in chunks if c.name == "Calculator" and c.chunk_type == ChunkType.CLASS)
+        calc_class = next(
+            c for c in chunks if c.name == "Calculator" and c.chunk_type == ChunkType.CLASS
+        )
         assert calc_class.docstring is not None
         assert "simple calculator" in calc_class.docstring.lower()
 
     def test_chunk_interface(self, chunker):
         """Test extracting Java interfaces."""
-        code = '''
+        code = """
 public interface Greeter {
     String greet(String name);
 }
-'''
+"""
         chunks = chunker.chunk_content(code, "Greeter.java")
 
         interface_chunks = [c for c in chunks if c.name == "Greeter"]
@@ -68,13 +73,13 @@ public interface Greeter {
 
     def test_chunk_enum(self, chunker):
         """Test extracting Java enums."""
-        code = '''
+        code = """
 public enum Color {
     RED,
     GREEN,
     BLUE
 }
-'''
+"""
         chunks = chunker.chunk_content(code, "Color.java")
 
         enum_chunks = [c for c in chunks if c.name == "Color"]

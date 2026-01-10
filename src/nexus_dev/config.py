@@ -70,9 +70,7 @@ class NexusConfig:
         # Default model based on provider
         if embedding_model is None:
             embedding_model = (
-                "text-embedding-3-small"
-                if embedding_provider == "openai"
-                else "nomic-embed-text"
+                "text-embedding-3-small" if embedding_provider == "openai" else "nomic-embed-text"
             )
 
         return cls(
@@ -128,9 +126,7 @@ class NexusConfig:
                     "**/__pycache__/**",
                 ],
             ),
-            docs_folders=data.get(
-                "docs_folders", ["docs/", "documentation/", "README.md"]
-            ),
+            docs_folders=data.get("docs_folders", ["docs/", "documentation/", "README.md"]),
         )
 
     @classmethod

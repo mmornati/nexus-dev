@@ -1,8 +1,9 @@
 """Tests for JavaScript/TypeScript chunkers."""
 
 import pytest
-from nexus_dev.chunkers.javascript_chunker import JavaScriptChunker, TypeScriptChunker
+
 from nexus_dev.chunkers.base import ChunkType
+from nexus_dev.chunkers.javascript_chunker import JavaScriptChunker, TypeScriptChunker
 
 
 class TestJavaScriptChunker:
@@ -22,11 +23,11 @@ class TestJavaScriptChunker:
 
     def test_chunk_function_declaration(self, chunker):
         """Test extracting function declarations."""
-        code = '''
+        code = """
 function greet(name) {
     return "Hello, " + name;
 }
-'''
+"""
         chunks = chunker.chunk_content(code, "test.js")
 
         func_chunk = next(c for c in chunks if c.name == "greet")
@@ -67,9 +68,9 @@ function greet(name) {
 
     def test_const_arrow_function(self, chunker):
         """Test const with arrow function."""
-        code = '''
+        code = """
 const multiply = (a, b) => a * b;
-'''
+"""
         chunks = chunker.chunk_content(code, "test.js")
 
         multi_chunk = next((c for c in chunks if c.name == "multiply"), None)

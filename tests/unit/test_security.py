@@ -5,10 +5,8 @@ scenarios correctly, including input validation, path traversal
 prevention, and injection protection.
 """
 
-import pytest
-from pathlib import Path
-from nexus_dev.config import NexusConfig
 from nexus_dev.chunkers import ChunkerRegistry
+from nexus_dev.config import NexusConfig
 from nexus_dev.database import generate_document_id
 
 
@@ -106,7 +104,7 @@ class TestChunkerSecurityBoundaries:
 
         # Should handle gracefully, not crash
         try:
-            chunks = ChunkerRegistry.chunk_file("binary.py", binary_content)
+            ChunkerRegistry.chunk_file("binary.py", binary_content)
         except Exception:
             pass  # Expected to fail parsing, but shouldn't crash
 
@@ -115,9 +113,8 @@ class TestChunkerSecurityBoundaries:
         content_with_nulls = "def test():\x00\x00pass"
 
         # Should handle gracefully
-        chunks = ChunkerRegistry.chunk_file("null.py", content_with_nulls)
+        ChunkerRegistry.chunk_file("null.py", content_with_nulls)
         # May or may not parse, but shouldn't crash
-        assert True
 
     def test_chunker_unicode_edge_cases(self):
         """Test handling of Unicode edge cases."""
@@ -200,9 +197,7 @@ class TestMemoryAndResourceLimits:
     def test_chunker_many_functions(self):
         """Test handling of file with many functions."""
         # Create file with 1000 functions
-        content = "\n".join(
-            f"def func_{i}():\n    return {i}\n" for i in range(1000)
-        )
+        content = "\n".join(f"def func_{i}():\n    return {i}\n" for i in range(1000))
 
         chunks = ChunkerRegistry.chunk_file("many.py", content)
         assert len(chunks) >= 100  # Should extract many chunks

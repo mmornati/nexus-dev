@@ -9,11 +9,9 @@ This module implements the MCP server using FastMCP, exposing tools for:
 
 from __future__ import annotations
 
-import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -91,7 +89,7 @@ async def _index_chunks(
 
     # Create documents
     documents = []
-    for chunk, embedding in zip(chunks, embeddings):
+    for chunk, embedding in zip(chunks, embeddings, strict=True):
         doc_id = generate_document_id(
             project_id,
             chunk.file_path,
@@ -299,7 +297,10 @@ async def search_lessons(
         )
 
         if not results:
-            return f"No lessons found matching: '{query}'\n\nTip: Use record_lesson to save problems and solutions for future reference."
+            return (
+                f"No lessons found matching: '{query}'\n\n"
+                "Tip: Use record_lesson to save problems and solutions for future reference."
+            )
 
         output_parts = [f"## Lessons Found: '{query}'", ""]
 
@@ -377,8 +378,6 @@ async def search_code(
 
     except Exception as e:
         return f"Code search failed: {e!s}"
-
-
 
 
 @mcp.tool()
@@ -510,7 +509,7 @@ async def record_lesson(
 
     # Create a unique ID for this lesson
     lesson_id = str(uuid.uuid4())[:8]
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     try:
         embedder = _get_embedder()

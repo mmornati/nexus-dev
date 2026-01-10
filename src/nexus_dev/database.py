@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 import lancedb
@@ -54,7 +53,7 @@ class Document:
     name: str = ""
     start_line: int = 0
     end_line: int = 0
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for LanceDB insertion."""
@@ -323,9 +322,7 @@ class NexusDatabase:
 
         # Get count before deletion
         try:
-            count_before = len(
-                table.search().where(f"project_id = '{project_id}'").to_pandas()
-            )
+            count_before = len(table.search().where(f"project_id = '{project_id}'").to_pandas())
         except Exception:
             count_before = 0
 

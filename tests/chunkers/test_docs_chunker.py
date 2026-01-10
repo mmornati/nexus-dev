@@ -1,8 +1,9 @@
 """Tests for documentation chunker."""
 
 import pytest
-from nexus_dev.chunkers.docs_chunker import DocumentationChunker
+
 from nexus_dev.chunkers.base import ChunkType
+from nexus_dev.chunkers.docs_chunker import DocumentationChunker
 
 
 class TestDocumentationChunker:
