@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 
-LABEL maintainer="Marco Mornati <marco@mornati.net>"
+LABEL maintainer="Marco Mornati <dev.g6tdt@mornati.simplelogin.com>"
 LABEL description="Nexus-Dev MCP Server - Persistent Memory for AI Coding Agents"
 
 WORKDIR /app
