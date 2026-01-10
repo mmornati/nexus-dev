@@ -127,26 +127,74 @@ fi
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph Agent["🤖 AI Agent"]
+        direction TB
+        Cursor["Cursor / Copilot / Windsurf"]
+    end
+
+    subgraph MCP["📡 Nexus-Dev MCP Server"]
+        direction TB
+        
+        subgraph Tools["MCP Tools"]
+            search_knowledge["search_knowledge"]
+            search_code["search_code"]
+            search_docs["search_docs"]
+            search_lessons["search_lessons"]
+            index_file["index_file"]
+            record_lesson["record_lesson"]
+        end
+        
+        subgraph Chunkers["🔧 Chunker Registry"]
+            Python["Python"]
+            JavaScript["JavaScript/TypeScript"]
+            Java["Java"]
+            Docs["Documentation"]
+        end
+        
+        subgraph Embeddings["🧮 Embedding Layer"]
+            OpenAI["OpenAI API"]
+            Ollama["Ollama (Local)"]
+        end
+        
+        subgraph DB["💾 LanceDB"]
+            Vectors["Vector Storage"]
+            Metadata["Metadata Index"]
+        end
+    end
+
+    Agent -->|"stdio"| Tools
+    Tools --> Chunkers
+    Chunkers --> Embeddings
+    Embeddings --> DB
 ```
-┌─────────────────────────┐     ┌──────────────────────────┐
-│   AI Agent (Cursor...)  │────▶│  Nexus-Dev MCP Server    │
-└─────────────────────────┘     │  ┌────────────────────┐  │
-         stdio                  │  │  Chunker Registry  │  │
-                                │  │  • Python          │  │
-                                │  │  • JavaScript      │  │
-                                │  │  • Java            │  │
-                                │  │  • Documentation   │  │
-                                │  └────────────────────┘  │
-                                │           │              │
-                                │  ┌────────▼────────┐     │
-                                │  │ Embedding Layer │     │
-                                │  │ OpenAI / Ollama │     │
-                                │  └────────┬────────┘     │
-                                │           │              │
-                                │  ┌────────▼────────┐     │
-                                │  │    LanceDB      │     │
-                                │  │ Vector Database │     │
-                                └──┴─────────────────┴─────┘
+
+### Data Flow
+
+```mermaid
+sequenceDiagram
+    participant AI as AI Agent
+    participant MCP as Nexus-Dev
+    participant Embed as Embeddings
+    participant DB as LanceDB
+
+    Note over AI,DB: Indexing Flow
+    AI->>MCP: index_file(path)
+    MCP->>MCP: Parse with Chunker
+    MCP->>Embed: Generate embeddings
+    Embed-->>MCP: Vectors
+    MCP->>DB: Store chunks + vectors
+    DB-->>MCP: OK
+    MCP-->>AI: ✅ Indexed
+
+    Note over AI,DB: Search Flow
+    AI->>MCP: search_knowledge(query)
+    MCP->>Embed: Embed query
+    Embed-->>MCP: Query vector
+    MCP->>DB: Vector similarity search
+    DB-->>MCP: Results
+    MCP-->>AI: Formatted results
 ```
 
 ## Development
