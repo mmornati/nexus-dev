@@ -1,0 +1,33 @@
+#!/bin/bash
+# Nexus-Dev Pre-commit Hook
+# This hook is OPTIONAL - install via: nexus-init --install-hook
+
+set -e
+
+echo "🧠 Nexus-Dev: Checking for files to index..."
+
+# Get list of modified/added code files
+MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(py|js|jsx|ts|tsx|java)$' || true)
+
+if [ -n "$MODIFIED_FILES" ]; then
+    echo "📁 Indexing modified code files..."
+    for file in $MODIFIED_FILES; do
+        if [ -f "$file" ]; then
+            python -m nexus_dev.cli index "$file" --quiet 2>/dev/null || true
+        fi
+    done
+fi
+
+# Index any new lesson files
+LESSON_FILES=$(git diff --cached --name-only --diff-filter=A | grep -E '^\.nexus/lessons/.*\.md$' || true)
+
+if [ -n "$LESSON_FILES" ]; then
+    echo "📚 Indexing new lessons..."
+    for file in $LESSON_FILES; do
+        if [ -f "$file" ]; then
+            python -m nexus_dev.cli index-lesson "$file" --quiet 2>/dev/null || true
+        fi
+    done
+fi
+
+echo "✅ Nexus-Dev indexing complete"

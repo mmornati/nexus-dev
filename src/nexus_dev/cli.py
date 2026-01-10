@@ -1,0 +1,549 @@
+"""Nexus-Dev CLI commands.
+
+Provides commands for:
+- nexus-init: Initialize Nexus-Dev in a project
+- nexus-index: Manually index files
+- nexus-status: Show project statistics
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import shutil
+import stat
+from fnmatch import fnmatch
+from pathlib import Path
+from typing import Literal
+
+import click
+
+from .chunkers import ChunkerRegistry
+from .config import NexusConfig
+from .database import Document, DocumentType, NexusDatabase, generate_document_id
+from .embeddings import create_embedder
+
+
+def _run_async(coro):
+    """Run async function in sync context."""
+    return asyncio.get_event_loop().run_until_complete(coro)
+
+
+@click.group()
+@click.version_option(version="0.1.0", prog_name="nexus-dev")
+def cli():
+    """Nexus-Dev CLI - Local RAG for AI coding agents.
+
+    Nexus-Dev provides persistent memory for AI coding assistants by indexing
+    your code and documentation into a local vector database.
+    """
+    pass
+
+
+@cli.command("init")
+@click.option(
+    "--project-name",
+    prompt="Project name",
+    help="Human-readable name for the project",
+)
+@click.option(
+    "--embedding-provider",
+    type=click.Choice(["openai", "ollama"]),
+    default="openai",
+    help="Embedding provider to use (default: openai)",
+)
+@click.option(
+    "--install-hook/--no-hook",
+    default=False,
+    help="Install pre-commit hook for automatic indexing",
+)
+def init_command(
+    project_name: str,
+    embedding_provider: Literal["openai", "ollama"],
+    install_hook: bool,
+) -> None:
+    """Initialize Nexus-Dev in the current repository.
+
+    Creates configuration file, lessons directory, and optionally installs
+    the pre-commit hook for automatic indexing.
+    """
+    cwd = Path.cwd()
+    config_path = cwd / "nexus_config.json"
+
+    # Check if already initialized
+    if config_path.exists():
+        click.echo("⚠️  nexus_config.json already exists.")
+        if not click.confirm("Overwrite existing configuration?"):
+            click.echo("Aborted.")
+            return
+
+    # Create configuration
+    config = NexusConfig.create_new(
+        project_name=project_name,
+        embedding_provider=embedding_provider,
+    )
+    config.save(config_path)
+    click.echo(f"✅ Created nexus_config.json")
+
+    # Create .nexus/lessons directory
+    lessons_dir = cwd / ".nexus" / "lessons"
+    lessons_dir.mkdir(parents=True, exist_ok=True)
+    click.echo(f"✅ Created .nexus/lessons/")
+
+    # Create .gitkeep so the directory is tracked
+    gitkeep = lessons_dir / ".gitkeep"
+    gitkeep.touch(exist_ok=True)
+
+    # Create database directory
+    db_path = config.get_db_path()
+    db_path.mkdir(parents=True, exist_ok=True)
+    click.echo(f"✅ Created database directory at {db_path}")
+
+    # Optionally install pre-commit hook
+    if install_hook:
+        _install_hook(cwd)
+
+    # Print summary
+    click.echo("")
+    click.echo("🎉 Nexus-Dev initialized successfully!")
+    click.echo("")
+    click.echo("Next steps:")
+    click.echo("  1. Index your code: nexus-index src/")
+    click.echo("  2. Index documentation: nexus-index docs/ README.md")
+    click.echo("  3. Configure your AI agent to use the nexus-dev MCP server")
+    click.echo("")
+    click.echo(f"Project ID: {config.project_id}")
+
+    if embedding_provider == "openai":
+        click.echo("")
+        click.echo("⚠️  Using OpenAI embeddings. Ensure OPENAI_API_KEY is set.")
+
+
+def _install_hook(cwd: Path) -> None:
+    """Install pre-commit hook."""
+    git_dir = cwd / ".git"
+    if not git_dir.exists():
+        click.echo("⚠️  Not a git repository. Skipping hook installation.")
+        return
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(exist_ok=True)
+
+    hook_path = hooks_dir / "pre-commit"
+
+    # Check if hook already exists
+    if hook_path.exists():
+        click.echo("⚠️  pre-commit hook already exists. Skipping.")
+        return
+
+    # Copy template
+    template_path = Path(__file__).parent.parent.parent / "templates" / "pre-commit-hook"
+    if template_path.exists():
+        shutil.copy(template_path, hook_path)
+    else:
+        # Write inline
+        hook_content = '''#!/bin/bash
+# Nexus-Dev Pre-commit Hook
+
+set -e
+
+echo "🧠 Nexus-Dev: Checking for files to index..."
+
+MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\\.(py|js|jsx|ts|tsx|java)$' || true)
+
+if [ -n "$MODIFIED_FILES" ]; then
+    echo "📁 Indexing modified code files..."
+    for file in $MODIFIED_FILES; do
+        if [ -f "$file" ]; then
+            python -m nexus_dev.cli index "$file" --quiet 2>/dev/null || true
+        fi
+    done
+fi
+
+LESSON_FILES=$(git diff --cached --name-only --diff-filter=A | grep -E '^\\.nexus/lessons/.*\\.md$' || true)
+
+if [ -n "$LESSON_FILES" ]; then
+    echo "📚 Indexing new lessons..."
+    for file in $LESSON_FILES; do
+        if [ -f "$file" ]; then
+            python -m nexus_dev.cli index-lesson "$file" --quiet 2>/dev/null || true
+        fi
+    done
+fi
+
+echo "✅ Nexus-Dev indexing complete"
+'''
+        hook_path.write_text(hook_content)
+
+    # Make executable
+    current_mode = hook_path.stat().st_mode
+    hook_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    click.echo("✅ Installed pre-commit hook")
+
+
+@cli.command("index")
+@click.argument("paths", nargs=-1, required=True)
+@click.option(
+    "-r", "--recursive",
+    is_flag=True,
+    help="Index directories recursively",
+)
+@click.option(
+    "-q", "--quiet",
+    is_flag=True,
+    help="Suppress output",
+)
+def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
+    """Manually index files or directories.
+
+    PATHS can be files or directories. Use -r to recursively index directories.
+
+    Examples:
+        nexus-index src/
+        nexus-index docs/ -r
+        nexus-index main.py utils.py
+    """
+    # Load config
+    config_path = Path.cwd() / "nexus_config.json"
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    # Collect files to index
+    files_to_index: list[Path] = []
+
+    for path_str in paths:
+        path = Path(path_str)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+
+        if not path.exists():
+            if not quiet:
+                click.echo(f"⚠️  Path not found: {path_str}")
+            continue
+
+        if path.is_file():
+            files_to_index.append(path)
+        elif path.is_dir():
+            if recursive:
+                # Recursively find files
+                for file_path in path.rglob("*"):
+                    if file_path.is_file() and _should_index(file_path, config):
+                        files_to_index.append(file_path)
+            else:
+                # Only immediate children
+                for file_path in path.iterdir():
+                    if file_path.is_file() and _should_index(file_path, config):
+                        files_to_index.append(file_path)
+
+    if not files_to_index:
+        if not quiet:
+            click.echo("No files to index.")
+        return
+
+    if not quiet:
+        click.echo(f"📁 Indexing {len(files_to_index)} file(s)...")
+
+    # Index files
+    total_chunks = 0
+    errors = 0
+
+    for file_path in files_to_index:
+        try:
+            # Read file
+            content = file_path.read_text(encoding="utf-8")
+
+            # Determine type
+            ext = file_path.suffix.lower()
+            doc_type = (
+                DocumentType.DOCUMENTATION
+                if ext in (".md", ".markdown", ".rst", ".txt")
+                else DocumentType.CODE
+            )
+
+            # Delete existing
+            _run_async(database.delete_by_file(str(file_path), config.project_id))
+
+            # Chunk file
+            chunks = ChunkerRegistry.chunk_file(file_path, content)
+
+            if chunks:
+                # Generate embeddings and store
+                chunk_count = _run_async(
+                    _index_chunks_sync(chunks, config.project_id, doc_type, embedder, database)
+                )
+                total_chunks += chunk_count
+
+                if not quiet:
+                    click.echo(f"  ✅ {file_path.name}: {chunk_count} chunks")
+
+        except Exception as e:
+            errors += 1
+            if not quiet:
+                click.echo(f"  ❌ {file_path.name}: {e!s}")
+
+    if not quiet:
+        click.echo("")
+        click.echo(f"✅ Indexed {total_chunks} chunks from {len(files_to_index) - errors} files")
+        if errors:
+            click.echo(f"⚠️  {errors} file(s) failed")
+
+
+async def _index_chunks_sync(
+    chunks: list,
+    project_id: str,
+    doc_type: DocumentType,
+    embedder,
+    database: NexusDatabase,
+) -> int:
+    """Index chunks synchronously."""
+    if not chunks:
+        return 0
+
+    texts = [chunk.get_searchable_text() for chunk in chunks]
+    embeddings = await embedder.embed_batch(texts)
+
+    documents = []
+    for chunk, embedding in zip(chunks, embeddings):
+        doc_id = generate_document_id(
+            project_id,
+            chunk.file_path,
+            chunk.name,
+            chunk.start_line,
+        )
+
+        doc = Document(
+            id=doc_id,
+            text=chunk.get_searchable_text(),
+            vector=embedding,
+            project_id=project_id,
+            file_path=chunk.file_path,
+            doc_type=doc_type,
+            chunk_type=chunk.chunk_type.value,
+            language=chunk.language,
+            name=chunk.name,
+            start_line=chunk.start_line,
+            end_line=chunk.end_line,
+        )
+        documents.append(doc)
+
+    await database.upsert_documents(documents)
+    return len(documents)
+
+
+def _should_index(file_path: Path, config: NexusConfig) -> bool:
+    """Check if file should be indexed based on config patterns."""
+    rel_path = str(file_path.relative_to(Path.cwd()))
+
+    # Check exclude patterns
+    for pattern in config.exclude_patterns:
+        if fnmatch(rel_path, pattern):
+            return False
+
+    # Check include patterns
+    for pattern in config.include_patterns:
+        if fnmatch(rel_path, pattern):
+            return True
+
+    # Also include docs folders
+    for docs_folder in config.docs_folders:
+        if rel_path.startswith(docs_folder) or rel_path == docs_folder.rstrip("/"):
+            return True
+
+    return False
+
+
+@cli.command("index-lesson")
+@click.argument("lesson_file")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress output")
+def index_lesson_command(lesson_file: str, quiet: bool) -> None:
+    """Index a lesson file from .nexus/lessons/."""
+    path = Path(lesson_file)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+
+    if not path.exists():
+        if not quiet:
+            click.echo(f"❌ Lesson file not found: {lesson_file}", err=True)
+        return
+
+    # Load config
+    config_path = Path.cwd() / "nexus_config.json"
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    try:
+        content = path.read_text(encoding="utf-8")
+
+        # Generate embedding
+        embedding = _run_async(embedder.embed(content))
+
+        # Create document
+        doc_id = generate_document_id(
+            config.project_id,
+            str(path),
+            path.stem,
+            0,
+        )
+
+        doc = Document(
+            id=doc_id,
+            text=content,
+            vector=embedding,
+            project_id=config.project_id,
+            file_path=str(path),
+            doc_type=DocumentType.LESSON,
+            chunk_type="lesson",
+            language="markdown",
+            name=path.stem,
+            start_line=0,
+            end_line=0,
+        )
+
+        _run_async(database.upsert_document(doc))
+
+        if not quiet:
+            click.echo(f"✅ Indexed lesson: {path.name}")
+
+    except Exception as e:
+        if not quiet:
+            click.echo(f"❌ Failed to index lesson: {e!s}", err=True)
+
+
+@cli.command("status")
+def status_command() -> None:
+    """Show Nexus-Dev status and statistics."""
+    config_path = Path.cwd() / "nexus_config.json"
+
+    if not config_path.exists():
+        click.echo("❌ Nexus-Dev not initialized in this directory.")
+        click.echo("   Run 'nexus-init' to get started.")
+        return
+
+    config = NexusConfig.load(config_path)
+
+    click.echo(f"📊 Nexus-Dev Status")
+    click.echo("")
+    click.echo(f"Project: {config.project_name}")
+    click.echo(f"Project ID: {config.project_id}")
+    click.echo(f"Embedding Provider: {config.embedding_provider}")
+    click.echo(f"Embedding Model: {config.embedding_model}")
+    click.echo(f"Database: {config.get_db_path()}")
+    click.echo("")
+
+    try:
+        embedder = create_embedder(config)
+        database = NexusDatabase(config, embedder)
+        database.connect()
+
+        stats = _run_async(database.get_project_stats(config.project_id))
+
+        click.echo("📈 Statistics:")
+        click.echo(f"   Total chunks: {stats.get('total', 0)}")
+        click.echo(f"   Code: {stats.get('code', 0)}")
+        click.echo(f"   Documentation: {stats.get('documentation', 0)}")
+        click.echo(f"   Lessons: {stats.get('lesson', 0)}")
+
+    except Exception as e:
+        click.echo(f"⚠️  Could not connect to database: {e!s}")
+
+
+@cli.command("reindex")
+@click.confirmation_option(prompt="This will delete and rebuild the entire index. Continue?")
+def reindex_command() -> None:
+    """Re-index entire project (clear and rebuild)."""
+    config_path = Path.cwd() / "nexus_config.json"
+
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    click.echo("🗑️  Clearing existing index...")
+    deleted = _run_async(database.delete_by_project(config.project_id))
+    click.echo(f"   Deleted {deleted} chunks")
+
+    click.echo("")
+    click.echo("📁 Re-indexing project...")
+
+    # Index based on include patterns
+    cwd = Path.cwd()
+    files_to_index: list[Path] = []
+
+    for pattern in config.include_patterns:
+        for file_path in cwd.glob(pattern):
+            if file_path.is_file() and _should_index(file_path, config):
+                files_to_index.append(file_path)
+
+    # Also index docs folders
+    for docs_folder in config.docs_folders:
+        docs_path = cwd / docs_folder
+        if docs_path.is_file():
+            files_to_index.append(docs_path)
+        elif docs_path.is_dir():
+            for file_path in docs_path.rglob("*"):
+                if file_path.is_file():
+                    files_to_index.append(file_path)
+
+    # Remove duplicates
+    files_to_index = list(set(files_to_index))
+
+    click.echo(f"   Found {len(files_to_index)} files to index")
+
+    # Index all files
+    total_chunks = 0
+    for file_path in files_to_index:
+        try:
+            content = file_path.read_text(encoding="utf-8")
+            ext = file_path.suffix.lower()
+            doc_type = (
+                DocumentType.DOCUMENTATION
+                if ext in (".md", ".markdown", ".rst", ".txt")
+                else DocumentType.CODE
+            )
+
+            chunks = ChunkerRegistry.chunk_file(file_path, content)
+            if chunks:
+                count = _run_async(
+                    _index_chunks_sync(chunks, config.project_id, doc_type, embedder, database)
+                )
+                total_chunks += count
+
+        except Exception:
+            pass
+
+    click.echo("")
+    click.echo(f"✅ Re-indexed {total_chunks} chunks from {len(files_to_index)} files")
+
+
+# Entry points for pyproject.toml scripts
+def init_command_entry():
+    """Entry point for nexus-init."""
+    cli(["init"])
+
+
+def index_command_entry():
+    """Entry point for nexus-index."""
+    # Get args after the command name
+    import sys
+    cli(["index"] + sys.argv[1:])
+
+
+if __name__ == "__main__":
+    cli()

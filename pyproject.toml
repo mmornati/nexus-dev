@@ -1,0 +1,74 @@
+[project]
+name = "nexus-dev"
+version = "0.1.0"
+description = "MCP server for persistent AI coding assistant memory with local RAG"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.13"
+authors = [
+    {name = "Marco Mornati", email = "marco@mornati.net"}
+]
+keywords = ["mcp", "rag", "ai", "coding", "assistant", "vector-database", "lancedb"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "mcp>=1.25.0",                      # MCP Python SDK with FastMCP
+    "lancedb>=0.26.0",                  # Vector database
+    "openai>=1.60.0",                   # OpenAI embeddings
+    "httpx>=0.28.0",                    # Async HTTP for Ollama
+    "click>=8.1.0",                     # CLI framework
+    "pyarrow>=18.0.0",                  # Arrow for LanceDB
+    "pydantic>=2.10.0",                 # Data validation
+    "tree-sitter>=0.24.0",              # Parser library
+    "tree-sitter-language-pack>=0.7.0", # Pre-built parsers (100+ languages)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+]
+
+[project.scripts]
+nexus-init = "nexus_dev.cli:init_command"
+nexus-index = "nexus_dev.cli:index_command"
+nexus-dev = "nexus_dev.server:main"
+
+[project.urls]
+Homepage = "https://github.com/mmornati/nexus-dev"
+Repository = "https://github.com/mmornati/nexus-dev"
+Issues = "https://github.com/mmornati/nexus-dev/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nexus_dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM"]
+ignore = ["ANN101", "ANN102"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

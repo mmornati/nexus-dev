@@ -1,0 +1,643 @@
+"""Nexus-Dev MCP Server.
+
+This module implements the MCP server using FastMCP, exposing tools for:
+- search_code: Semantic search across indexed code and documentation
+- index_file: Index a file into the knowledge base
+- record_lesson: Store a problem/solution pair
+- get_project_context: Get recent discoveries for a project
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+
+from .chunkers import ChunkerRegistry, CodeChunk
+from .config import NexusConfig
+from .database import Document, DocumentType, NexusDatabase, generate_document_id
+from .embeddings import EmbeddingProvider, create_embedder
+
+# Initialize FastMCP server
+mcp = FastMCP("nexus-dev")
+
+# Global state (initialized on startup)
+_config: NexusConfig | None = None
+_embedder: EmbeddingProvider | None = None
+_database: NexusDatabase | None = None
+
+
+def _get_config() -> NexusConfig:
+    """Get or load configuration."""
+    global _config
+    if _config is None:
+        config_path = Path.cwd() / "nexus_config.json"
+        if config_path.exists():
+            _config = NexusConfig.load(config_path)
+        else:
+            # Create default config
+            _config = NexusConfig.create_new("default-project")
+    return _config
+
+
+def _get_embedder() -> EmbeddingProvider:
+    """Get or create embedding provider."""
+    global _embedder
+    if _embedder is None:
+        config = _get_config()
+        _embedder = create_embedder(config)
+    return _embedder
+
+
+def _get_database() -> NexusDatabase:
+    """Get or create database connection."""
+    global _database
+    if _database is None:
+        config = _get_config()
+        embedder = _get_embedder()
+        _database = NexusDatabase(config, embedder)
+        _database.connect()
+    return _database
+
+
+async def _index_chunks(
+    chunks: list[CodeChunk],
+    project_id: str,
+    doc_type: DocumentType,
+) -> list[str]:
+    """Index a list of chunks into the database.
+
+    Args:
+        chunks: Code chunks to index.
+        project_id: Project identifier.
+        doc_type: Type of document.
+
+    Returns:
+        List of document IDs.
+    """
+    if not chunks:
+        return []
+
+    embedder = _get_embedder()
+    database = _get_database()
+
+    # Generate embeddings for all chunks
+    texts = [chunk.get_searchable_text() for chunk in chunks]
+    embeddings = await embedder.embed_batch(texts)
+
+    # Create documents
+    documents = []
+    for chunk, embedding in zip(chunks, embeddings):
+        doc_id = generate_document_id(
+            project_id,
+            chunk.file_path,
+            chunk.name,
+            chunk.start_line,
+        )
+
+        doc = Document(
+            id=doc_id,
+            text=chunk.get_searchable_text(),
+            vector=embedding,
+            project_id=project_id,
+            file_path=chunk.file_path,
+            doc_type=doc_type,
+            chunk_type=chunk.chunk_type.value,
+            language=chunk.language,
+            name=chunk.name,
+            start_line=chunk.start_line,
+            end_line=chunk.end_line,
+        )
+        documents.append(doc)
+
+    # Upsert documents
+    return await database.upsert_documents(documents)
+
+
+@mcp.tool()
+async def search_knowledge(
+    query: str,
+    content_type: str = "all",
+    project_id: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search all indexed knowledge including code, documentation, and lessons.
+
+    This is the main search tool that can find relevant information across all
+    indexed content types. Use the content_type parameter to filter results.
+
+    Args:
+        query: Natural language search query describing what you're looking for.
+               Examples: "function that handles user authentication",
+               "how to configure the database", "error with null pointer".
+        content_type: Filter by content type. Options:
+                     - "all": Search everything (default)
+                     - "code": Only search code (functions, classes, methods)
+                     - "documentation": Only search docs (markdown, rst, txt)
+                     - "lesson": Only search recorded lessons
+        project_id: Optional project identifier to limit search scope.
+                    If not provided, searches across all projects.
+        limit: Maximum number of results to return (default: 5, max: 20).
+
+    Returns:
+        Formatted search results with file paths, content, and relevance info.
+    """
+    config = _get_config()
+    database = _get_database()
+
+    # Use current project if no specific project requested
+    effective_project_id = project_id or config.project_id
+
+    # Clamp limit
+    limit = min(max(1, limit), 20)
+
+    # Map content_type to DocumentType
+    doc_type_filter = None
+    if content_type == "code":
+        doc_type_filter = DocumentType.CODE
+    elif content_type == "documentation":
+        doc_type_filter = DocumentType.DOCUMENTATION
+    elif content_type == "lesson":
+        doc_type_filter = DocumentType.LESSON
+    # "all" means no filter
+
+    try:
+        results = await database.search(
+            query=query,
+            project_id=effective_project_id if project_id is not None else None,
+            doc_type=doc_type_filter,
+            limit=limit,
+        )
+
+        if not results:
+            return f"No results found for query: '{query}'" + (
+                f" (filtered by {content_type})" if content_type != "all" else ""
+            )
+
+        # Format results
+        content_label = f" [{content_type.upper()}]" if content_type != "all" else ""
+        output_parts = [f"## Search Results{content_label}: '{query}'", ""]
+
+        for i, result in enumerate(results, 1):
+            type_badge = f"[{result.doc_type.upper()}]"
+            output_parts.append(f"### Result {i}: {type_badge} {result.name}")
+            output_parts.append(f"**File:** `{result.file_path}`")
+            output_parts.append(f"**Type:** {result.chunk_type} ({result.language})")
+            if result.start_line > 0:
+                output_parts.append(f"**Lines:** {result.start_line}-{result.end_line}")
+            output_parts.append("")
+            output_parts.append("```" + result.language)
+            output_parts.append(result.text[:2000])  # Truncate long content
+            if len(result.text) > 2000:
+                output_parts.append("... (truncated)")
+            output_parts.append("```")
+            output_parts.append("")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Search failed: {e!s}"
+
+
+@mcp.tool()
+async def search_docs(
+    query: str,
+    project_id: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search specifically in documentation (Markdown, RST, text files).
+
+    Use this tool when you need to find information in project documentation,
+    README files, or other text documentation. This is more targeted than
+    search_knowledge when you know the answer is in the docs.
+
+    Args:
+        query: Natural language search query.
+               Examples: "how to install", "API configuration", "usage examples".
+        project_id: Optional project identifier. Searches all projects if not specified.
+        limit: Maximum number of results (default: 5, max: 20).
+
+    Returns:
+        Formatted documentation search results.
+    """
+    config = _get_config()
+    database = _get_database()
+
+    effective_project_id = project_id or config.project_id
+    limit = min(max(1, limit), 20)
+
+    try:
+        results = await database.search(
+            query=query,
+            project_id=effective_project_id if project_id is not None else None,
+            doc_type=DocumentType.DOCUMENTATION,
+            limit=limit,
+        )
+
+        if not results:
+            return f"No documentation found for: '{query}'"
+
+        output_parts = [f"## Documentation Search: '{query}'", ""]
+
+        for i, result in enumerate(results, 1):
+            output_parts.append(f"### {i}. {result.name}")
+            output_parts.append(f"**Source:** `{result.file_path}`")
+            output_parts.append("")
+            # For docs, render as markdown directly
+            output_parts.append(result.text[:2500])
+            if len(result.text) > 2500:
+                output_parts.append("\n... (truncated)")
+            output_parts.append("")
+            output_parts.append("---")
+            output_parts.append("")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Documentation search failed: {e!s}"
+
+
+@mcp.tool()
+async def search_lessons(
+    query: str,
+    project_id: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search in recorded lessons (problems and solutions).
+
+    Use this tool when you encounter an error or problem that might have been
+    solved before. Lessons contain problem descriptions and their solutions,
+    making them ideal for troubleshooting similar issues.
+
+    Args:
+        query: Description of the problem or error you're facing.
+               Examples: "TypeError with None", "database connection timeout",
+               "how to fix import error".
+        project_id: Optional project identifier. Searches all projects if not specified,
+                    enabling cross-project learning.
+        limit: Maximum number of results (default: 5, max: 20).
+
+    Returns:
+        Relevant lessons with problems and solutions.
+    """
+    config = _get_config()
+    database = _get_database()
+
+    effective_project_id = project_id or config.project_id
+    limit = min(max(1, limit), 20)
+
+    try:
+        results = await database.search(
+            query=query,
+            project_id=effective_project_id if project_id is not None else None,
+            doc_type=DocumentType.LESSON,
+            limit=limit,
+        )
+
+        if not results:
+            return f"No lessons found matching: '{query}'\n\nTip: Use record_lesson to save problems and solutions for future reference."
+
+        output_parts = [f"## Lessons Found: '{query}'", ""]
+
+        for i, result in enumerate(results, 1):
+            output_parts.append(f"### Lesson {i}")
+            output_parts.append(f"**ID:** {result.name}")
+            output_parts.append(f"**Project:** {result.project_id}")
+            output_parts.append("")
+            output_parts.append(result.text)
+            output_parts.append("")
+            output_parts.append("---")
+            output_parts.append("")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Lesson search failed: {e!s}"
+
+
+@mcp.tool()
+async def search_code(
+    query: str,
+    project_id: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search specifically in indexed code (functions, classes, methods).
+
+    Use this tool when you need to find code implementations, function definitions,
+    or class structures. This is more targeted than search_knowledge when you
+    specifically need code, not documentation.
+
+    Args:
+        query: Description of the code you're looking for.
+               Examples: "function that handles authentication",
+               "class for database connections", "method to validate input".
+        project_id: Optional project identifier. Searches all projects if not specified.
+        limit: Maximum number of results (default: 5, max: 20).
+
+    Returns:
+        Relevant code snippets with file locations.
+    """
+    config = _get_config()
+    database = _get_database()
+
+    effective_project_id = project_id or config.project_id
+    limit = min(max(1, limit), 20)
+
+    try:
+        results = await database.search(
+            query=query,
+            project_id=effective_project_id if project_id is not None else None,
+            doc_type=DocumentType.CODE,
+            limit=limit,
+        )
+
+        if not results:
+            return f"No code found for: '{query}'"
+
+        output_parts = [f"## Code Search: '{query}'", ""]
+
+        for i, result in enumerate(results, 1):
+            output_parts.append(f"### {i}. {result.chunk_type}: {result.name}")
+            output_parts.append(f"**File:** `{result.file_path}`")
+            output_parts.append(f"**Lines:** {result.start_line}-{result.end_line}")
+            output_parts.append(f"**Language:** {result.language}")
+            output_parts.append("")
+            output_parts.append("```" + result.language)
+            output_parts.append(result.text[:2000])
+            if len(result.text) > 2000:
+                output_parts.append("... (truncated)")
+            output_parts.append("```")
+            output_parts.append("")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Code search failed: {e!s}"
+
+
+
+
+@mcp.tool()
+async def index_file(
+    file_path: str,
+    content: str | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Index a file into the knowledge base.
+
+    Parses the file using language-aware chunking (extracting functions, classes,
+    methods) and stores it in the vector database for semantic search.
+
+    Supported file types:
+    - Python (.py, .pyw)
+    - JavaScript (.js, .jsx, .mjs, .cjs)
+    - TypeScript (.ts, .tsx, .mts, .cts)
+    - Java (.java)
+    - Markdown (.md, .markdown)
+    - RST (.rst)
+    - Plain text (.txt)
+
+    Args:
+        file_path: Path to the file (relative or absolute). The file must exist
+                   unless content is provided.
+        content: Optional file content. If not provided, reads from disk.
+        project_id: Optional project identifier. Uses current project if not specified.
+
+    Returns:
+        Summary of indexed chunks including count and types.
+    """
+    config = _get_config()
+    effective_project_id = project_id or config.project_id
+
+    # Resolve file path
+    path = Path(file_path)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+
+    # Get content
+    if content is None:
+        if not path.exists():
+            return f"Error: File not found: {path}"
+        try:
+            content = path.read_text(encoding="utf-8")
+        except Exception as e:
+            return f"Error reading file: {e!s}"
+
+    # Determine document type
+    doc_type = DocumentType.CODE
+    ext = path.suffix.lower()
+    if ext in (".md", ".markdown", ".rst", ".txt"):
+        doc_type = DocumentType.DOCUMENTATION
+
+    try:
+        # Delete existing chunks for this file
+        database = _get_database()
+        await database.delete_by_file(str(path), effective_project_id)
+
+        # Chunk the file
+        chunks = ChunkerRegistry.chunk_file(path, content)
+
+        if not chunks:
+            return f"No indexable content found in: {file_path}"
+
+        # Index chunks
+        doc_ids = await _index_chunks(chunks, effective_project_id, doc_type)
+
+        # Summarize by chunk type
+        type_counts: dict[str, int] = {}
+        for chunk in chunks:
+            ctype = chunk.chunk_type.value
+            type_counts[ctype] = type_counts.get(ctype, 0) + 1
+
+        type_summary = ", ".join(f"{count} {ctype}(s)" for ctype, count in type_counts.items())
+
+        return (
+            f"✅ Indexed `{file_path}`\n"
+            f"- Chunks: {len(doc_ids)}\n"
+            f"- Types: {type_summary}\n"
+            f"- Language: {ChunkerRegistry.get_language(path)}\n"
+            f"- Project: {effective_project_id}"
+        )
+
+    except Exception as e:
+        return f"Indexing failed: {e!s}"
+
+
+@mcp.tool()
+async def record_lesson(
+    problem: str,
+    solution: str,
+    context: str | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Record a learned lesson from debugging or problem-solving.
+
+    Use this tool to store problems you've encountered and their solutions.
+    These lessons will be searchable and can help with similar issues in the future,
+    both in this project and across other projects.
+
+    Args:
+        problem: Clear description of the problem encountered.
+                 Example: "TypeError when passing None to user_service.get_user()"
+        solution: How the problem was resolved.
+                  Example: "Added null check before calling get_user() and return early if None"
+        context: Optional additional context like file path, library, error message.
+        project_id: Optional project identifier. Uses current project if not specified.
+
+    Returns:
+        Confirmation with lesson ID and a summary.
+    """
+    config = _get_config()
+    effective_project_id = project_id or config.project_id
+
+    # Create lesson text
+    lesson_parts = [
+        "## Problem",
+        problem,
+        "",
+        "## Solution",
+        solution,
+    ]
+
+    if context:
+        lesson_parts.extend(["", "## Context", context])
+
+    lesson_text = "\n".join(lesson_parts)
+
+    # Create a unique ID for this lesson
+    lesson_id = str(uuid.uuid4())[:8]
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    try:
+        embedder = _get_embedder()
+        database = _get_database()
+
+        # Generate embedding
+        embedding = await embedder.embed(lesson_text)
+
+        # Create document
+        doc = Document(
+            id=generate_document_id(effective_project_id, "lessons", lesson_id, 0),
+            text=lesson_text,
+            vector=embedding,
+            project_id=effective_project_id,
+            file_path=f".nexus/lessons/{lesson_id}.md",
+            doc_type=DocumentType.LESSON,
+            chunk_type="lesson",
+            language="markdown",
+            name=f"lesson_{lesson_id}",
+            start_line=0,
+            end_line=0,
+        )
+
+        await database.upsert_document(doc)
+
+        # Also save to .nexus/lessons directory if it exists
+        lessons_dir = Path.cwd() / ".nexus" / "lessons"
+        if lessons_dir.exists():
+            lesson_file = lessons_dir / f"{lesson_id}_{timestamp[:10]}.md"
+            try:
+                lesson_file.write_text(lesson_text, encoding="utf-8")
+            except Exception:
+                pass  # Silently fail if we can't write to disk
+
+        return (
+            f"✅ Lesson recorded!\n"
+            f"- ID: {lesson_id}\n"
+            f"- Project: {effective_project_id}\n"
+            f"- Problem: {problem[:100]}{'...' if len(problem) > 100 else ''}"
+        )
+
+    except Exception as e:
+        return f"Failed to record lesson: {e!s}"
+
+
+@mcp.tool()
+async def get_project_context(
+    project_id: str | None = None,
+    limit: int = 10,
+) -> str:
+    """Get recent lessons and discoveries for a project.
+
+    Returns a summary of recent lessons learned and indexed content for the
+    specified project. Useful for getting up to speed on a project or
+    reviewing what the AI assistant has learned.
+
+    Args:
+        project_id: Project identifier. Uses current project if not specified.
+        limit: Maximum number of recent items to return (default: 10).
+
+    Returns:
+        Summary of project knowledge including statistics and recent lessons.
+    """
+    config = _get_config()
+    database = _get_database()
+    effective_project_id = project_id or config.project_id
+
+    limit = min(max(1, limit), 50)
+
+    try:
+        # Get project statistics
+        stats = await database.get_project_stats(effective_project_id)
+
+        # Get recent lessons
+        recent_lessons = await database.get_recent_lessons(effective_project_id, limit)
+
+        # Format output
+        output_parts = [
+            f"## Project Context: {config.project_name}",
+            f"**Project ID:** `{effective_project_id}`",
+            "",
+            "### Statistics",
+            f"- Total indexed chunks: {stats.get('total', 0)}",
+            f"- Code chunks: {stats.get('code', 0)}",
+            f"- Documentation chunks: {stats.get('documentation', 0)}",
+            f"- Lessons: {stats.get('lesson', 0)}",
+            "",
+        ]
+
+        if recent_lessons:
+            output_parts.append("### Recent Lessons")
+            output_parts.append("")
+
+            for lesson in recent_lessons:
+                output_parts.append(f"#### {lesson.name}")
+                # Extract just the problem summary
+                lines = lesson.text.split("\n")
+                problem = ""
+                for i, line in enumerate(lines):
+                    if line.strip() == "## Problem" and i + 1 < len(lines):
+                        problem = lines[i + 1].strip()
+                        break
+                if problem:
+                    output_parts.append(f"**Problem:** {problem[:200]}...")
+                output_parts.append("")
+
+        else:
+            output_parts.append("*No lessons recorded yet.*")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Failed to get project context: {e!s}"
+
+
+def main() -> None:
+    """Run the MCP server."""
+    # Initialize on startup
+    try:
+        _get_config()
+        _get_database()
+    except Exception:
+        pass  # Config may not exist yet, that's OK
+
+    # Run server with stdio transport
+    mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
