@@ -41,6 +41,17 @@
                     "command"
                 ]
             }
+        },
+        "profiles": {
+            "type": "object",
+            "description": "Named profiles mapping to server lists",
+            "additionalProperties": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "default": {}
         }
     },
     "required": [

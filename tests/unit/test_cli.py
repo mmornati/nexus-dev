@@ -766,3 +766,239 @@ class TestCliMCPInit:
 
             # Cleanup
             global_config_path.unlink()
+
+
+class TestCliMCPAdd:
+    """Test suite for nexus-mcp add command."""
+
+    def test_mcp_add_simple_server(self, runner, tmp_path):
+        """Test adding a simple server without args or env."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {}, "profiles": {}}')
+
+            result = runner.invoke(
+                cli,
+                ["mcp", "add", "test-server", "--command", "test-cmd"],
+            )
+
+            assert result.exit_code == 0
+            assert "Added test-server to profile 'default'" in result.output
+
+            # Verify config
+            config = json.loads(config_path.read_text())
+            assert "test-server" in config["servers"]
+            assert config["servers"]["test-server"]["command"] == "test-cmd"
+            assert config["servers"]["test-server"]["args"] == []
+            assert config["servers"]["test-server"]["env"] == {}
+            assert config["servers"]["test-server"]["enabled"] is True
+
+            # Verify profile
+            assert "default" in config["profiles"]
+            assert "test-server" in config["profiles"]["default"]
+
+    def test_mcp_add_with_args(self, runner, tmp_path):
+        """Test adding a server with arguments."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {}, "profiles": {}}')
+
+            result = runner.invoke(
+                cli,
+                [
+                    "mcp",
+                    "add",
+                    "github",
+                    "--command",
+                    "npx",
+                    "--args",
+                    "-y",
+                    "--args",
+                    "@modelcontextprotocol/server-github",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Added github to profile 'default'" in result.output
+
+            # Verify config
+            config = json.loads(config_path.read_text())
+            assert config["servers"]["github"]["command"] == "npx"
+            assert config["servers"]["github"]["args"] == [
+                "-y",
+                "@modelcontextprotocol/server-github",
+            ]
+
+    def test_mcp_add_with_env(self, runner, tmp_path):
+        """Test adding a server with environment variables."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {}, "profiles": {}}')
+
+            result = runner.invoke(
+                cli,
+                [
+                    "mcp",
+                    "add",
+                    "myserver",
+                    "--command",
+                    "my-mcp",
+                    "--env",
+                    "API_KEY=${MY_API_KEY}",
+                    "--env",
+                    "DEBUG=true",
+                ],
+            )
+
+            assert result.exit_code == 0
+
+            # Verify config
+            config = json.loads(config_path.read_text())
+            assert config["servers"]["myserver"]["env"] == {
+                "API_KEY": "${MY_API_KEY}",
+                "DEBUG": "true",
+            }
+
+    def test_mcp_add_to_custom_profile(self, runner, tmp_path):
+        """Test adding a server to a custom profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {}, "profiles": {}}')
+
+            result = runner.invoke(
+                cli,
+                [
+                    "mcp",
+                    "add",
+                    "test-server",
+                    "--command",
+                    "test-cmd",
+                    "--profile",
+                    "dev",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Added test-server to profile 'dev'" in result.output
+
+            # Verify profile
+            config = json.loads(config_path.read_text())
+            assert "dev" in config["profiles"]
+            assert "test-server" in config["profiles"]["dev"]
+
+    def test_mcp_add_to_existing_profile(self, runner, tmp_path):
+        """Test adding a server to an existing profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config with existing profile
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            initial_config = {
+                "version": "1.0",
+                "servers": {"server1": {"command": "cmd1", "args": [], "env": {}, "enabled": True}},
+                "profiles": {"default": ["server1"]},
+            }
+            config_path.write_text(json.dumps(initial_config))
+
+            result = runner.invoke(
+                cli,
+                ["mcp", "add", "server2", "--command", "cmd2"],
+            )
+
+            assert result.exit_code == 0
+
+            # Verify both servers in profile
+            config = json.loads(config_path.read_text())
+            assert "server1" in config["profiles"]["default"]
+            assert "server2" in config["profiles"]["default"]
+
+    def test_mcp_add_duplicate_server_in_profile(self, runner, tmp_path):
+        """Test adding a server that's already in the profile doesn't duplicate."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            initial_config = {
+                "version": "1.0",
+                "servers": {"server1": {"command": "cmd1", "args": [], "env": {}, "enabled": True}},
+                "profiles": {"default": ["server1"]},
+            }
+            config_path.write_text(json.dumps(initial_config))
+
+            # Add same server again (should update server config but not duplicate in profile)
+            result = runner.invoke(
+                cli,
+                ["mcp", "add", "server1", "--command", "new-cmd"],
+            )
+
+            assert result.exit_code == 0
+
+            # Verify server only appears once in profile
+            config = json.loads(config_path.read_text())
+            assert config["profiles"]["default"].count("server1") == 1
+            # Verify server command was updated
+            assert config["servers"]["server1"]["command"] == "new-cmd"
+
+    def test_mcp_add_no_config(self, runner, tmp_path):
+        """Test add command fails gracefully when config doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(
+                cli,
+                ["mcp", "add", "test", "--command", "cmd"],
+            )
+
+            assert "Run 'nexus-mcp init' first" in result.output
+
+    def test_mcp_add_complex_example(self, runner, tmp_path):
+        """Test adding a complex server with all options."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create initial config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {}, "profiles": {}}')
+
+            result = runner.invoke(
+                cli,
+                [
+                    "mcp",
+                    "add",
+                    "github",
+                    "--command",
+                    "npx",
+                    "--args",
+                    "-y",
+                    "--args",
+                    "@modelcontextprotocol/server-github",
+                    "--env",
+                    "GITHUB_TOKEN=${GITHUB_TOKEN}",
+                    "--env",
+                    "DEBUG=false",
+                    "--profile",
+                    "production",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Added github to profile 'production'" in result.output
+
+            # Verify full config
+            config = json.loads(config_path.read_text())
+            assert config["servers"]["github"]["command"] == "npx"
+            assert config["servers"]["github"]["args"] == [
+                "-y",
+                "@modelcontextprotocol/server-github",
+            ]
+            assert config["servers"]["github"]["env"] == {
+                "GITHUB_TOKEN": "${GITHUB_TOKEN}",
+                "DEBUG": "false",
+            }
+            assert config["servers"]["github"]["enabled"] is True
+            assert "production" in config["profiles"]
+            assert "github" in config["profiles"]["production"]
