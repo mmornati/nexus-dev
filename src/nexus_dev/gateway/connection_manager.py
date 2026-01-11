@@ -4,11 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urljoin
 
-from mcp import ClientSession
+import anyio
+import httpx
+from anyio.abc import TaskStatus
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+from mcp import ClientSession, types
+from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.shared.message import SessionMessage
 
 from ..mcp_config import MCPServerConfig
 
@@ -19,6 +28,134 @@ class MCPConnectionError(Exception):
     """Failed to connect to MCP server."""
 
     pass
+
+
+@asynccontextmanager
+async def github_sse_client(
+    url: str,
+    headers: dict[str, Any] | None = None,
+    timeout: float = 5,
+    sse_read_timeout: float = 60 * 5,
+    auth: httpx.Auth | None = None,
+) -> AsyncIterator[tuple[MemoryObjectReceiveStream[Any], MemoryObjectSendStream[Any]]]:
+    """Custom SSE client for GitHub that uses POST with ping payload.
+
+    This client avoids aconnect_sse because api.githubcopilot.com returns 400
+    if 'Accept: text/event-stream' is present in the initial POST.
+    """
+    read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
+    write_stream, write_stream_reader = anyio.create_memory_object_stream(100)
+
+    # Prepare headers, ensuring Accept is NOT text/event-stream
+    effective_headers = (headers or {}).copy()
+    effective_headers["Accept"] = "*/*"
+    if "User-Agent" not in effective_headers:
+        effective_headers["User-Agent"] = "nexus-dev/1.0"
+
+    async with anyio.create_task_group() as tg:
+        try:
+            async with (
+                httpx.AsyncClient(
+                    http2=True,
+                    headers=effective_headers,
+                    auth=auth,
+                    timeout=httpx.Timeout(timeout, read=sse_read_timeout),
+                ) as client,
+                client.stream(
+                    "POST",
+                    url,
+                    json={"jsonrpc": "2.0", "method": "ping", "id": 999},
+                ) as response,
+            ):
+                response.raise_for_status()
+                from httpx_sse import EventSource
+
+                event_source = EventSource(response)
+
+                async def sse_reader(
+                    task_status: TaskStatus[str] = anyio.TASK_STATUS_IGNORED,
+                ) -> None:
+                    started = False
+                    try:
+                        async for sse in event_source.aiter_sse():
+                            if not started and sse.event != "endpoint":
+                                task_status.started(url)
+                                started = True
+
+                            match sse.event:
+                                case "endpoint":
+                                    endpoint_url = urljoin(url, sse.data)
+                                    if not started:
+                                        task_status.started(endpoint_url)
+                                        started = True
+                                case "message":
+                                    if not sse.data:
+                                        continue
+                                    msg = types.JSONRPCMessage.model_validate_json(sse.data)
+                                    await read_stream_writer.send(SessionMessage(msg))
+                    except anyio.get_cancelled_exc_class():
+                        pass
+                    except Exception as exc:
+                        if not started:
+                            task_status.started(url)
+                            started = True
+                        await read_stream_writer.send(exc)
+                    finally:
+                        if not started:
+                            task_status.started(url)
+
+                async def post_writer(endpoint_url: str) -> None:
+                    try:
+                        # Use a separate client for POSTs to avoid potential multiplexing issues
+                        # with the long-lived SSE stream.
+                        async with (
+                            httpx.AsyncClient(
+                                http2=True,
+                                headers=effective_headers,
+                                auth=auth,
+                                timeout=httpx.Timeout(timeout),
+                            ) as post_client,
+                            write_stream_reader,
+                        ):
+                            async for session_message in write_stream_reader:
+                                resp = await post_client.post(
+                                    endpoint_url,
+                                    json=session_message.message.model_dump(
+                                        by_alias=True, mode="json", exclude_none=True
+                                    ),
+                                )
+                                resp.raise_for_status()
+
+                                # GitHub hybrid behavior: response may be in the POST body
+                                # formatted as SSE: data: {...}
+                                body = resp.text
+                                if "data: " in body:
+                                    for line in body.splitlines():
+                                        if line.startswith("data: "):
+                                            data = line[len("data: ") :].strip()
+                                            if data:
+                                                msg = types.JSONRPCMessage.model_validate_json(data)
+                                                await read_stream_writer.send(SessionMessage(msg))
+                    except anyio.get_cancelled_exc_class():
+                        pass
+                    except Exception as exc:
+                        logger.error("Error in post_writer for %s: %s", endpoint_url, exc)
+                    finally:
+                        await write_stream.aclose()
+
+                with anyio.move_on_after(5.0):
+                    endpoint_url = await tg.start(sse_reader)
+
+                if endpoint_url is None:
+                    endpoint_url = url
+
+                tg.start_soon(post_writer, endpoint_url)
+                yield read_stream, write_stream
+        finally:
+            # Cancel all background tasks in the group before exiting
+            tg.cancel_scope.cancel()
+            await read_stream_writer.aclose()
+            await write_stream.aclose()
 
 
 class MCPTimeoutError(Exception):
@@ -99,12 +236,22 @@ class MCPConnection:
 
     async def _do_connect_impl(self) -> ClientSession:
         """Internal connection implementation."""
-        server_params = StdioServerParameters(
-            command=self.config.command,
-            args=self.config.args,
-            env=self.config.env,
-        )
-        transport_cm = stdio_client(server_params)
+        if self.config.transport in ("sse", "http"):
+            if not self.config.url:
+                raise ValueError(f"URL required for {self.config.transport} transport: {self.name}")
+
+            client_factory = github_sse_client if self.config.transport == "http" else sse_client
+            transport_cm = client_factory(
+                url=self.config.url,
+                headers=self.config.headers,
+            )
+        else:
+            server_params = StdioServerParameters(
+                command=self.config.command,  # type: ignore
+                args=self.config.args,
+                env=self.config.env,
+            )
+            transport_cm = stdio_client(server_params)
         read, write = await transport_cm.__aenter__()
         self._cleanup_stack.append(transport_cm)
 

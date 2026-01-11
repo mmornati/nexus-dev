@@ -27,6 +27,7 @@ dependencies = [
     "pydantic>=2.10.0",                 # Data validation
     "tree-sitter>=0.24.0",              # Parser library
     "tree-sitter-language-pack>=0.7.0", # Pre-built parsers (100+ languages)
+    "jsonschema>=4.18.0",               # JSON schema validation
 ]
 
 [project.optional-dependencies]

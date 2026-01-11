@@ -471,3 +471,47 @@ class TestConnectionEdgeCases:
 
         # Old session should be cleared
         assert conn.session is None
+
+
+class TestMCPConnectionTransport:
+    """Tests for transport selection."""
+
+    @patch("nexus_dev.gateway.connection_manager.sse_client")
+    @patch("nexus_dev.gateway.connection_manager.ClientSession")
+    @pytest.mark.asyncio
+    async def test_connect_sse_transport(self, mock_session_cls, mock_sse, mock_config):
+        """Test connection using SSE transport."""
+        # Configure for SSE
+        mock_config.transport = "sse"
+        mock_config.url = "http://localhost:8000/sse"
+        mock_config.headers = {"Authorization": "Bearer test"}
+
+        mock_transport_cm = AsyncMock()
+        mock_sse.return_value = mock_transport_cm
+        mock_transport_cm.__aenter__.return_value = (MagicMock(), MagicMock())
+
+        mock_session_cm = AsyncMock()
+        mock_session_cls.return_value = mock_session_cm
+        mock_session_cm.__aenter__.return_value = AsyncMock(spec=ClientSession)
+
+        conn = MCPConnection(name="test", config=mock_config)
+        await conn.connect()
+
+        mock_sse.assert_called_once_with(
+            url="http://localhost:8000/sse", headers={"Authorization": "Bearer test"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_connect_sse_missing_url(self, mock_config):
+        """Test ValueError when URL missing for SSE."""
+        mock_config.transport = "sse"
+        mock_config.url = None
+
+        conn = MCPConnection(name="test", config=mock_config, max_retries=1, retry_delay=0.01)
+
+        with pytest.raises(MCPConnectionError) as exc:
+            await conn.connect()
+
+        # The underlying error should be ValueError
+        assert isinstance(exc.value.__cause__, ValueError)
+        assert "URL required for SSE transport" in str(exc.value.__cause__)

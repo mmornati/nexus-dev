@@ -18,9 +18,19 @@
                         "type": "boolean",
                         "default": true
                     },
+                    "transport": {
+                        "type": "string",
+                        "enum": [
+                            "stdio",
+                            "sse",
+                            "http"
+                        ],
+                        "default": "stdio",
+                        "description": "Transport type: stdio (local process) or sse (HTTP remote)"
+                    },
                     "command": {
                         "type": "string",
-                        "description": "Command to start the MCP server"
+                        "description": "Command to start the MCP server (required for stdio)"
                     },
                     "args": {
                         "type": "array",
@@ -36,6 +46,19 @@
                         },
                         "default": {}
                     },
+                    "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "description": "Server URL (required for sse)"
+                    },
+                    "headers": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "default": {},
+                        "description": "HTTP headers for SSE connection"
+                    },
                     "timeout": {
                         "type": "number",
                         "description": "Tool execution timeout in seconds",
@@ -49,8 +72,55 @@
                         "minimum": 1
                     }
                 },
-                "required": [
-                    "command"
+                "allOf": [
+                    {
+                        "if": {
+                            "properties": {
+                                "transport": {
+                                    "const": "stdio"
+                                }
+                            }
+                        },
+                        "then": {
+                            "required": [
+                                "command"
+                            ]
+                        }
+                    },
+                    {
+                        "if": {
+                            "properties": {
+                                "transport": {
+                                    "const": "sse"
+                                }
+                            },
+                            "required": [
+                                "transport"
+                            ]
+                        },
+                        "then": {
+                            "required": [
+                                "url"
+                            ]
+                        }
+                    },
+                    {
+                        "if": {
+                            "properties": {
+                                "transport": {
+                                    "const": "http"
+                                }
+                            },
+                            "required": [
+                                "transport"
+                            ]
+                        },
+                        "then": {
+                            "required": [
+                                "url"
+                            ]
+                        }
+                    }
                 ]
             }
         },
