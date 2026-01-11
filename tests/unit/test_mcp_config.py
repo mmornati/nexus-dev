@@ -199,3 +199,104 @@ def test_mcp_config_save_and_load_with_profiles(tmp_path):
     assert loaded_config.profiles == config.profiles
     assert loaded_config.profiles["default"] == ["github"]
     assert loaded_config.profiles["all"] == ["github", "gitlab"]
+
+
+def test_mcp_config_active_profile_default():
+    """Test that active_profile defaults to 'default'."""
+    config = MCPConfig(
+        version="1.0",
+        servers={"server1": MCPServerConfig(command="cmd1")},
+    )
+    assert config.active_profile == "default"
+
+
+def test_mcp_config_active_profile_custom():
+    """Test setting custom active_profile."""
+    config = MCPConfig(
+        version="1.0",
+        servers={"server1": MCPServerConfig(command="cmd1")},
+        profiles={"dev": ["server1"]},
+        active_profile="dev",
+    )
+    assert config.active_profile == "dev"
+
+
+def test_mcp_config_save_and_load_with_active_profile(tmp_path):
+    """Test that active_profile is saved and loaded correctly."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="npx", args=["-y", "github-server"]),
+            "gitlab": MCPServerConfig(command="npx", args=["-y", "gitlab-server"]),
+        },
+        profiles={
+            "default": ["github"],
+            "all": ["github", "gitlab"],
+        },
+        active_profile="all",
+    )
+
+    config_path = tmp_path / "config_with_active_profile.json"
+    config.save(config_path)
+
+    # Load it back
+    loaded_config = MCPConfig.load(config_path)
+
+    assert loaded_config.active_profile == "all"
+
+
+def test_mcp_config_get_active_servers_with_profile():
+    """Test get_active_servers returns servers from active profile."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="npx", enabled=True),
+            "gitlab": MCPServerConfig(command="npx", enabled=True),
+            "disabled": MCPServerConfig(command="echo", enabled=False),
+        },
+        profiles={
+            "default": ["github"],
+            "all": ["github", "gitlab", "disabled"],
+        },
+        active_profile="default",
+    )
+
+    active_servers = config.get_active_servers()
+    assert len(active_servers) == 1
+    assert active_servers[0].command == "npx"
+
+
+def test_mcp_config_get_active_servers_filters_disabled_in_profile():
+    """Test get_active_servers filters out disabled servers even in profile."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="npx", enabled=True),
+            "gitlab": MCPServerConfig(command="npx", enabled=False),
+        },
+        profiles={
+            "all": ["github", "gitlab"],
+        },
+        active_profile="all",
+    )
+
+    active_servers = config.get_active_servers()
+    assert len(active_servers) == 1
+    assert active_servers[0].command == "npx"
+
+
+def test_mcp_config_get_active_servers_no_profile():
+    """Test get_active_servers returns all enabled when profile doesn't exist."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="npx", enabled=True),
+            "gitlab": MCPServerConfig(command="npx", enabled=True),
+            "disabled": MCPServerConfig(command="echo", enabled=False),
+        },
+        profiles={},
+        active_profile="nonexistent",
+    )
+
+    active_servers = config.get_active_servers()
+    assert len(active_servers) == 2  # Should return all enabled servers
