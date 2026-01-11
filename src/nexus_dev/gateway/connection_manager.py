@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -10,6 +11,20 @@ from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from ..mcp_config import MCPServerConfig
+
+logger = logging.getLogger(__name__)
+
+
+class MCPConnectionError(Exception):
+    """Failed to connect to MCP server."""
+
+    pass
+
+
+class MCPTimeoutError(Exception):
+    """Tool invocation timed out."""
+
+    pass
 
 
 @dataclass
@@ -22,47 +37,108 @@ class MCPConnection:
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _cleanup_stack: list[Any] = field(default_factory=list)
 
+    # Retry configuration
+    max_retries: int = 3
+    retry_delay: float = 1.0  # seconds (base delay for exponential backoff)
+    timeout: float = 30.0  # seconds for tool invocations
+
     async def connect(self) -> ClientSession:
-        """Get or create connection."""
+        """Get or create connection with retry logic."""
         async with self._lock:
-            if self.session is None:
+            # Check if existing session is still alive
+            if self.session is not None:
                 try:
-                    # 1. Start stdio client
-                    server_params = StdioServerParameters(
-                        command=self.config.command,
-                        args=self.config.args,
-                        env=self.config.env,
-                    )
-                    transport_cm = stdio_client(server_params)
-                    read, write = await transport_cm.__aenter__()
-                    self._cleanup_stack.append(transport_cm)
-
-                    # 2. Start Request/Response ClientSession
-                    session_cm = ClientSession(read, write)
-                    self.session = await session_cm.__aenter__()
-                    self._cleanup_stack.append(session_cm)
-
-                    # 3. Initialize
-                    await self.session.initialize()
-
+                    await self.session.send_ping()
+                    return self.session
                 except Exception:
-                    await self.disconnect()
-                    raise
+                    logger.warning("Connection to %s lost, reconnecting...", self.name)
+                    await self._cleanup()
 
-            return self.session
+            # Try to connect with retries
+            last_error: Exception | None = None
+            for attempt in range(self.max_retries):
+                try:
+                    return await self._do_connect()
+                except Exception as e:
+                    last_error = e
+                    logger.warning(
+                        "Connection attempt %d/%d to %s failed: %s",
+                        attempt + 1,
+                        self.max_retries,
+                        self.name,
+                        e,
+                    )
+                    if attempt < self.max_retries - 1:
+                        delay = self.retry_delay * (2**attempt)  # Exponential backoff
+                        await asyncio.sleep(delay)
+
+            raise MCPConnectionError(
+                f"Failed to connect to {self.name} after {self.max_retries} attempts"
+            ) from last_error
+
+    async def _do_connect(self) -> ClientSession:
+        """Perform actual connection to MCP server."""
+        server_params = StdioServerParameters(
+            command=self.config.command,
+            args=self.config.args,
+            env=self.config.env,
+        )
+        transport_cm = stdio_client(server_params)
+        read, write = await transport_cm.__aenter__()
+        self._cleanup_stack.append(transport_cm)
+
+        session_cm = ClientSession(read, write)
+        self.session = await session_cm.__aenter__()
+        self._cleanup_stack.append(session_cm)
+
+        await self.session.initialize()
+        logger.info("Connected to MCP server: %s", self.name)
+        return self.session
+
+    async def _cleanup(self) -> None:
+        """Clean up connection resources (called with lock held)."""
+        while self._cleanup_stack:
+            cm = self._cleanup_stack.pop()
+            try:
+                await cm.__aexit__(None, None, None)
+            except Exception as e:
+                logger.debug("Cleanup error for %s: %s", self.name, e)
+        self.session = None
 
     async def disconnect(self) -> None:
         """Close connection."""
         async with self._lock:
-            # Cleanup in reverse order
-            while self._cleanup_stack:
-                cm = self._cleanup_stack.pop()
-                try:
-                    await cm.__aexit__(None, None, None)
-                except Exception:
-                    # Log error but continue cleanup
-                    pass
-            self.session = None
+            await self._cleanup()
+            logger.info("Disconnected from MCP server: %s", self.name)
+
+    async def invoke_with_timeout(self, tool: str, arguments: dict[str, Any]) -> Any:
+        """Invoke a tool with timeout protection.
+
+        Args:
+            tool: Tool name to invoke.
+            arguments: Tool arguments.
+
+        Returns:
+            Tool execution result.
+
+        Raises:
+            MCPTimeoutError: If tool invocation times out.
+            MCPConnectionError: If connection fails.
+        """
+        session = await self.connect()
+        try:
+            return await asyncio.wait_for(
+                session.call_tool(tool, arguments),
+                timeout=self.timeout,
+            )
+        except TimeoutError as e:
+            logger.error(
+                "Tool %s on %s timed out after %.1fs",
+                tool,
+                self.name,
+                self.timeout,
+            )
+            raise MCPTimeoutError(f"Tool '{tool}' timed out after {self.timeout}s") from e
 
 
 class ConnectionManager:
@@ -94,7 +170,7 @@ class ConnectionManager:
     async def invoke_tool(
         self, name: str, config: MCPServerConfig, tool: str, arguments: dict[str, Any]
     ) -> Any:
-        """Invoke a tool on a backend MCP server.
+        """Invoke a tool on a backend MCP server with timeout.
 
         Args:
             name: Server name for connection pooling.
@@ -104,6 +180,14 @@ class ConnectionManager:
 
         Returns:
             Tool execution result (MCP CallToolResult).
+
+        Raises:
+            MCPConnectionError: If connection fails after retries.
+            MCPTimeoutError: If tool invocation times out.
         """
-        session = await self.get_connection(name, config)
-        return await session.call_tool(tool, arguments)
+        async with self._lock:
+            if name not in self._connections:
+                self._connections[name] = MCPConnection(name=name, config=config)
+            connection = self._connections[name]
+
+        return await connection.invoke_with_timeout(tool, arguments)
