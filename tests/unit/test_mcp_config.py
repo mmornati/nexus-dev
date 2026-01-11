@@ -154,3 +154,48 @@ def test_mcp_config_save_and_load_roundtrip(tmp_path, valid_config_data):
         assert loaded_server.args == server.args
         assert loaded_server.env == server.env
         assert loaded_server.enabled == server.enabled
+
+
+def test_mcp_config_profiles():
+    """Test that profiles can be added and retrieved."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "server1": MCPServerConfig(command="cmd1"),
+            "server2": MCPServerConfig(command="cmd2"),
+        },
+        profiles={
+            "default": ["server1", "server2"],
+            "dev": ["server1"],
+        },
+    )
+
+    assert "default" in config.profiles
+    assert "dev" in config.profiles
+    assert config.profiles["default"] == ["server1", "server2"]
+    assert config.profiles["dev"] == ["server1"]
+
+
+def test_mcp_config_save_and_load_with_profiles(tmp_path):
+    """Test that profiles are saved and loaded correctly."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="npx", args=["-y", "github-server"]),
+            "gitlab": MCPServerConfig(command="npx", args=["-y", "gitlab-server"]),
+        },
+        profiles={
+            "default": ["github"],
+            "all": ["github", "gitlab"],
+        },
+    )
+
+    config_path = tmp_path / "config_with_profiles.json"
+    config.save(config_path)
+
+    # Load it back
+    loaded_config = MCPConfig.load(config_path)
+
+    assert loaded_config.profiles == config.profiles
+    assert loaded_config.profiles["default"] == ["github"]
+    assert loaded_config.profiles["all"] == ["github", "gitlab"]

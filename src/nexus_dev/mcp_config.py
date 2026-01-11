@@ -26,6 +26,7 @@ class MCPConfig:
 
     version: str
     servers: dict[str, MCPServerConfig]
+    profiles: dict[str, list[str]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: str | Path) -> MCPConfig:
@@ -60,7 +61,9 @@ class MCPConfig:
             for name, cfg in data["servers"].items()
         }
 
-        return cls(version=data["version"], servers=servers)
+        profiles = data.get("profiles", {})
+
+        return cls(version=data["version"], servers=servers, profiles=profiles)
 
     def get_active_servers(self) -> list[MCPServerConfig]:
         """Get a list of enabled MCP server configurations.
@@ -90,6 +93,7 @@ class MCPConfig:
                 }
                 for name, server in self.servers.items()
             },
+            "profiles": self.profiles,
         }
 
         # Validate before saving

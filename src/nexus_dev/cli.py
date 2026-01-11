@@ -713,6 +713,7 @@ def mcp_init_command(from_global: bool) -> None:
         mcp_config = MCPConfig(
             version="1.0",
             servers=servers,
+            profiles={},
         )
         click.echo(f"Imported {len(servers)} servers from global config")
     else:
@@ -720,6 +721,7 @@ def mcp_init_command(from_global: bool) -> None:
         mcp_config = MCPConfig(
             version="1.0",
             servers={},
+            profiles={},
         )
 
     mcp_config.save(config_path)
@@ -727,6 +729,54 @@ def mcp_init_command(from_global: bool) -> None:
     click.echo("")
     click.echo("Configuration initialized successfully!")
     click.echo("You can manually edit the config file to add MCP servers.")
+
+
+@mcp_group.command("add")
+@click.argument("name")
+@click.option("--command", "-c", required=True, help="Command to run MCP server")
+@click.option("--args", "-a", multiple=True, help="Arguments for the command")
+@click.option("--env", "-e", multiple=True, help="Environment vars (KEY=value or KEY=${VAR})")
+@click.option("--profile", "-p", default="default", help="Add to profile (default: default)")
+def mcp_add_command(
+    name: str, command: str, args: tuple[str, ...], env: tuple[str, ...], profile: str
+) -> None:
+    """Add an MCP server to the configuration.
+
+    Examples:
+        nexus-mcp add github --command "npx" --args "-y" \\
+            --args "@modelcontextprotocol/server-github"
+        nexus-mcp add myserver --command "my-mcp" --env "API_KEY=${MY_API_KEY}"
+    """
+    config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+    if not config_path.exists():
+        click.echo("Run 'nexus-mcp init' first")
+        return
+
+    mcp_config = MCPConfig.load(config_path)
+
+    # Parse environment variables
+    env_dict = {}
+    for e in env:
+        if "=" in e:
+            k, v = e.split("=", 1)
+            env_dict[k] = v
+
+    # Add server
+    mcp_config.servers[name] = MCPServerConfig(
+        command=command,
+        args=list(args),
+        env=env_dict,
+        enabled=True,
+    )
+
+    # Add to profile
+    if profile not in mcp_config.profiles:
+        mcp_config.profiles[profile] = []
+    if name not in mcp_config.profiles[profile]:
+        mcp_config.profiles[profile].append(name)
+
+    mcp_config.save(config_path)
+    click.echo(f"Added {name} to profile '{profile}'")
 
 
 # Entry points for pyproject.toml scripts
