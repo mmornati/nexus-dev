@@ -1502,3 +1502,75 @@ class TestGetActiveToolsResource:
         assert "..." in result
         # The full 150-char description should not be in the output
         assert long_description not in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_with_high_limit(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource queries with high limit for all tools."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_config = MagicMock()
+        mock_config.active_profile = "default"
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_get_active_server_names.return_value = ["test-server"]
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(return_value=[])
+        mock_get_db.return_value = mock_db
+
+        await get_active_tools_resource()
+
+        # Verify search was called with limit=1000 to get all tools
+        call_args = mock_db.search.call_args
+        assert call_args.kwargs["limit"] == 1000
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_filters_by_active_servers(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource only shows tools from active servers."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_config = MagicMock()
+        mock_config.active_profile = "dev"
+        mock_get_mcp_config.return_value = mock_config
+
+        # Only github is active
+        mock_get_active_server_names.return_value = ["github"]
+
+        # Mock database returns tools from multiple servers
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="create_issue",
+                    server_name="github",
+                    text="GitHub tool",
+                ),
+                make_search_result(
+                    doc_type="tool",
+                    name="turn_on_light",
+                    server_name="homeassistant",
+                    text="Home Assistant tool",
+                ),
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await get_active_tools_resource()
+
+        # Only github tool should be in output
+        assert "github" in result
+        assert "create_issue" in result
+        # homeassistant tools should NOT be shown (not in active servers)
+        assert "homeassistant" not in result
+        assert "turn_on_light" not in result

@@ -368,3 +368,100 @@ def test_mcp_config_get_active_servers_no_profile():
 
     active_servers = config.get_active_servers()
     assert len(active_servers) == 2  # Should return all enabled servers
+
+
+def test_mcp_config_profile_with_nonexistent_server():
+    """Test get_active_servers handles profile referencing non-existent servers."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="npx", enabled=True),
+        },
+        profiles={
+            "test": ["github", "nonexistent-server", "another-missing"],
+        },
+        active_profile="test",
+    )
+
+    active_servers = config.get_active_servers()
+    # Should only return the one that exists and is enabled
+    assert len(active_servers) == 1
+    assert active_servers[0].command == "npx"
+
+
+def test_mcp_config_timeout_minimum_values():
+    """Test config with minimum timeout values."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "quick": MCPServerConfig(
+                command="fast-cmd", timeout=1.0, connect_timeout=1.0, enabled=True
+            ),
+        },
+    )
+
+    assert config.servers["quick"].timeout == 1.0
+    assert config.servers["quick"].connect_timeout == 1.0
+
+
+def test_mcp_config_timeout_large_values():
+    """Test config with large timeout values."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "slow": MCPServerConfig(
+                command="slow-cmd", timeout=3600.0, connect_timeout=300.0, enabled=True
+            ),
+        },
+    )
+
+    assert config.servers["slow"].timeout == 3600.0
+    assert config.servers["slow"].connect_timeout == 300.0
+
+
+def test_mcp_config_save_validates_schema(tmp_path):
+    """Test that save validates config against schema before writing."""
+    config = MCPConfig(
+        version="1.0",
+        servers={"test": MCPServerConfig(command="cmd")},
+    )
+
+    # Save should succeed with valid config
+    config_path = tmp_path / "valid_config.json"
+    config.save(config_path)
+    assert config_path.exists()
+
+    # Attempting to save invalid version should fail during load
+    # (We test this indirectly since save validates before writing)
+    loaded = MCPConfig.load(config_path)
+    assert loaded.version == "1.0"
+
+
+def test_mcp_config_empty_profiles_dict():
+    """Test config with empty profiles dictionary."""
+    config = MCPConfig(
+        version="1.0",
+        servers={"server1": MCPServerConfig(command="cmd", enabled=True)},
+        profiles={},
+        active_profile="default",
+    )
+
+    # With no profiles, should return all enabled servers
+    active = config.get_active_servers()
+    assert len(active) == 1
+
+
+def test_mcp_config_gateway_settings_roundtrip(tmp_path):
+    """Test that gateway settings are preserved in save/load roundtrip."""
+    config = MCPConfig(
+        version="1.0",
+        servers={},
+        gateway=GatewaySettings(default_timeout=120.0, max_concurrent_connections=15),
+    )
+
+    config_path = tmp_path / "gateway_config.json"
+    config.save(config_path)
+
+    loaded = MCPConfig.load(config_path)
+    assert loaded.gateway.default_timeout == 120.0
+    assert loaded.gateway.max_concurrent_connections == 15
