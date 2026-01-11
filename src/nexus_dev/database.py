@@ -21,6 +21,7 @@ class DocumentType(str, Enum):
     CODE = "code"
     LESSON = "lesson"
     DOCUMENTATION = "documentation"
+    TOOL = "tool"
 
 
 @dataclass
@@ -33,13 +34,15 @@ class Document:
         vector: Embedding vector.
         project_id: Project this document belongs to.
         file_path: Source file path.
-        doc_type: Type of document (code, lesson, documentation).
+        doc_type: Type of document (code, lesson, documentation, tool).
         chunk_type: Type of code chunk (function, class, method, module).
         language: Programming language or "markdown".
         name: Name of the code element (function/class name).
         start_line: Starting line number in source file.
         end_line: Ending line number in source file.
         timestamp: When the document was indexed.
+        server_name: For TOOL type: MCP server name.
+        parameters_schema: For TOOL type: JSON schema string.
     """
 
     id: str
@@ -54,6 +57,8 @@ class Document:
     start_line: int = 0
     end_line: int = 0
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    server_name: str = ""
+    parameters_schema: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for LanceDB insertion."""
@@ -70,6 +75,8 @@ class Document:
             "start_line": self.start_line,
             "end_line": self.end_line,
             "timestamp": self.timestamp.isoformat(),
+            "server_name": self.server_name,
+            "parameters_schema": self.parameters_schema,
         }
 
 
@@ -144,6 +151,8 @@ class NexusDatabase:
                 pa.field("start_line", pa.int32()),
                 pa.field("end_line", pa.int32()),
                 pa.field("timestamp", pa.string()),
+                pa.field("server_name", pa.string()),
+                pa.field("parameters_schema", pa.string()),
             ]
         )
 

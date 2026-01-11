@@ -507,6 +507,8 @@ class TestNexusDatabase:
             "start_line",
             "end_line",
             "timestamp",
+            "server_name",
+            "parameters_schema",
         ]
 
         assert field_names == expected_fields
