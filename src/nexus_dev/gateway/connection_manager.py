@@ -238,7 +238,9 @@ class MCPConnection:
         """Internal connection implementation."""
         if self.config.transport in ("sse", "http"):
             if not self.config.url:
-                raise ValueError(f"URL required for {self.config.transport} transport: {self.name}")
+                raise ValueError(
+                    f"URL required for {self.config.transport.upper()} transport: {self.name}"
+                )
 
             client_factory = github_sse_client if self.config.transport == "http" else sse_client
             transport_cm = client_factory(
