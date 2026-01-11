@@ -25,6 +25,7 @@ class TestCliInit:
             result = runner.invoke(
                 cli,
                 ["init", "--project-name", "test-project", "--no-hook"],
+                input="allow-lessons\n",
                 catch_exceptions=False,
             )
 
@@ -35,7 +36,9 @@ class TestCliInit:
     def test_init_creates_lessons_directory(self, runner, tmp_path):
         """Test init command creates .nexus/lessons directory."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = runner.invoke(cli, ["init", "--project-name", "test", "--no-hook"])
+            result = runner.invoke(
+                cli, ["init", "--project-name", "test", "--no-hook"], input="allow-lessons\n"
+            )
 
             assert result.exit_code == 0
             lessons_dir = Path.cwd() / ".nexus" / "lessons"
@@ -54,6 +57,7 @@ class TestCliInit:
                     "ollama",
                     "--no-hook",
                 ],
+                input="allow-lessons\n",
             )
 
             assert result.exit_code == 0
@@ -73,6 +77,7 @@ class TestCliInit:
                     "openai",
                     "--no-hook",
                 ],
+                input="allow-lessons\n",
             )
 
             assert result.exit_code == 0
@@ -87,7 +92,7 @@ class TestCliInit:
             result = runner.invoke(
                 cli,
                 ["init", "--project-name", "test", "--no-hook"],
-                input="n\n",  # Decline overwrite
+                input="n\n",  # Decline overwrite (would show gitignore choice if not aborted)
             )
 
             assert "Aborted" in result.output
@@ -203,7 +208,8 @@ class TestCliIndex:
             mock_chunk.language = "python"
             mock_registry.chunk_file.return_value = [mock_chunk]
 
-            result = runner.invoke(cli, ["index", "test.py"])
+            # Use -q to skip confirmation
+            result = runner.invoke(cli, ["index", "test.py", "-q"])
 
             assert result.exit_code == 0 or "Indexed" in result.output
 
@@ -247,7 +253,7 @@ class TestCliIndex:
                 mock_db_cls.return_value = mock_db
 
                 # Run index command recursively on current dir
-                result = runner.invoke(cli, ["index", ".", "-r"])
+                result = runner.invoke(cli, ["index", ".", "-r"], input="y\n")
 
                 assert result.exit_code == 0
 
@@ -264,7 +270,7 @@ class TestCliReindex:
     def test_reindex_no_config(self, runner, tmp_path):
         """Test reindex fails gracefully without config."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = runner.invoke(cli, ["reindex", "--yes"])
+            result = runner.invoke(cli, ["reindex"])
 
             assert "nexus_config.json not found" in result.output
 
