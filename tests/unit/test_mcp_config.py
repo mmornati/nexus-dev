@@ -1,10 +1,8 @@
-"""Unit tests for MCP configuration."""
-
 import json
 
 import pytest
 
-from nexus_dev.mcp_config import MCPConfig, MCPServerConfig
+from nexus_dev.mcp_config import GatewaySettings, MCPConfig, MCPServerConfig
 
 
 @pytest.fixture
@@ -67,6 +65,76 @@ def test_mcp_server_config_defaults():
     assert server.args == []
     assert server.env == {}
     assert server.enabled is True
+    assert server.timeout == 30.0
+    assert server.connect_timeout == 10.0
+
+
+def test_mcp_server_config_custom_timeout():
+    server = MCPServerConfig(
+        command="ls",
+        timeout=60.0,
+        connect_timeout=15.0,
+    )
+    assert server.timeout == 60.0
+    assert server.connect_timeout == 15.0
+
+
+def test_gateway_settings_defaults():
+    settings = GatewaySettings()
+    assert settings.default_timeout == 30.0
+    assert settings.max_concurrent_connections == 5
+
+
+def test_gateway_settings_custom():
+    settings = GatewaySettings(
+        default_timeout=45.0,
+        max_concurrent_connections=10,
+    )
+    assert settings.default_timeout == 45.0
+    assert settings.max_concurrent_connections == 10
+
+
+def test_mcp_config_with_gateway(tmp_path, valid_config_data):
+    gateway_config = {
+        "default_timeout": 60.0,
+        "max_concurrent_connections": 20,
+    }
+    valid_config_data["gateway"] = gateway_config
+
+    config_path = tmp_path / "mcp_config.json"
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(valid_config_data, f)
+
+    config = MCPConfig.load(config_path)
+    assert config.gateway.default_timeout == 60.0
+    assert config.gateway.max_concurrent_connections == 20
+
+
+def test_mcp_config_load_with_timeouts(tmp_path, valid_config_data):
+    valid_config_data["servers"]["timeout-server"] = {
+        "command": "python",
+        "timeout": 120.0,
+        "connect_timeout": 5.0,
+    }
+
+    config_path = tmp_path / "mcp_config.json"
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(valid_config_data, f)
+
+    config = MCPConfig.load(config_path)
+    server = config.servers["timeout-server"]
+    assert server.timeout == 120.0
+    assert server.connect_timeout == 5.0
+
+    # Test saving preserves timeouts
+    output_path = tmp_path / "output_config.json"
+    config.save(output_path)
+
+    loaded_config = MCPConfig.load(output_path)
+    saved_server = loaded_config.servers["timeout-server"]
+    assert saved_server.timeout == 120.0
+    assert saved_server.connect_timeout == 5.0
+    assert loaded_config.gateway.default_timeout == 30.0  # Default preserved
 
 
 def test_mcp_config_get_active_servers(valid_config_data):

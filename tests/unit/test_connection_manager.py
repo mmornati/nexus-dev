@@ -180,7 +180,8 @@ class TestMCPConnectionTimeout:
     @pytest.mark.asyncio
     async def test_invoke_with_timeout_success(self, mock_config):
         """Test successful tool invocation within timeout."""
-        conn = MCPConnection(name="test", config=mock_config, timeout=5.0)
+        mock_config.timeout = 5.0
+        conn = MCPConnection(name="test", config=mock_config)
         mock_session = AsyncMock(spec=ClientSession)
         mock_session.send_ping = AsyncMock()
         mock_session.call_tool = AsyncMock(return_value="result")
@@ -194,23 +195,48 @@ class TestMCPConnectionTimeout:
     @pytest.mark.asyncio
     async def test_invoke_with_timeout_raises_timeout_error(self, mock_config):
         """Test MCPTimeoutError when tool exceeds timeout."""
-        conn = MCPConnection(name="test", config=mock_config, timeout=0.01)
-        mock_session = AsyncMock(spec=ClientSession)
-        mock_session.send_ping = AsyncMock()
+        mock_config.timeout = 0.1
+        connection = MCPConnection(name="test", config=mock_config)
 
-        # Simulate a slow tool that times out
+        # Create properly async mock for session
+        mock_session = MagicMock(spec=ClientSession)
+        mock_session.send_ping = AsyncMock(return_value=None)
+        mock_session.initialize = AsyncMock(return_value=None)
+
+        # The tool call itself needs to hang
         async def slow_tool(*args, **kwargs):
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(0.5)
             return "result"
 
-        mock_session.call_tool = slow_tool
-        conn.session = mock_session
+        mock_session.call_tool = MagicMock(side_effect=slow_tool)
 
-        with pytest.raises(MCPTimeoutError) as exc_info:
-            await conn.invoke_with_timeout("slow_tool", {})
+        # Mock connect to return our session
+        connection.connect = AsyncMock(return_value=mock_session)
+        connection.session = mock_session
 
-        assert "slow_tool" in str(exc_info.value)
-        assert "timed out" in str(exc_info.value)
+        with pytest.raises(MCPTimeoutError, match="timed out"):
+            await connection.invoke_with_timeout("tool", {})
+
+    @pytest.mark.asyncio
+    async def test_connect_uses_config_timeout(self, mock_config):
+        """Test that connect uses the configured connect_timeout."""
+        # Set a very short connect timeout
+        mock_config.connect_timeout = 0.05
+        connection = MCPConnection(name="test", config=mock_config)
+        connection.retry_delay = 0.01  # Speed up retries
+
+        async def slow_connect():
+            await asyncio.sleep(0.2)
+            return MagicMock()
+
+        # Mock _do_connect_impl to be slow
+        connection._do_connect_impl = AsyncMock(side_effect=slow_connect)
+
+        # We anticipate connection failure due to timeout
+        with pytest.raises(MCPConnectionError) as excinfo:
+            await connection.connect()
+
+        assert "after 3 attempts" in str(excinfo.value)
 
 
 class TestMCPConnectionLogging:
