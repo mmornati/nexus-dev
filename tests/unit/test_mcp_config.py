@@ -1,9 +1,9 @@
 """Unit tests for MCP configuration."""
 
 import json
-from pathlib import Path
 
 import pytest
+
 from nexus_dev.mcp_config import MCPConfig, MCPServerConfig
 
 
