@@ -107,6 +107,18 @@ def init_command(
     if install_hook:
         _install_hook(cwd)
 
+    # Configure .gitignore
+    click.echo("")
+    ignore_choice = click.prompt(
+        "Configure .gitignore for .nexus folder?",
+        type=click.Choice(["allow-lessons", "ignore-all", "skip"]),
+        default="allow-lessons",
+        show_default=True,
+    )
+
+    if ignore_choice != "skip":
+        _update_gitignore(cwd, ignore_choice)
+
     # Print summary
     click.echo("")
     click.echo("🎉 Nexus-Dev initialized successfully!")
@@ -186,6 +198,46 @@ echo "✅ Nexus-Dev indexing complete"
     hook_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     click.echo("✅ Installed pre-commit hook")
+
+
+def _update_gitignore(cwd: Path, choice: str) -> None:
+    """Update .gitignore based on user choice."""
+    gitignore_path = cwd / ".gitignore"
+
+    # define mapping for content
+    content_map = {
+        "allow-lessons": [
+            "\n# Nexus-Dev",
+            ".nexus_config.json",
+            ".nexus/*",
+            "!.nexus/lessons/",
+            "",
+        ],
+        "ignore-all": ["\n# Nexus-Dev", ".nexus_config.json", ".nexus/", ""],
+    }
+
+    new_lines = content_map.get(choice, [])
+    if not new_lines:
+        return
+
+    # Create if doesn't exist
+    if not gitignore_path.exists():
+        gitignore_path.write_text("\n".join(new_lines), encoding="utf-8")
+        click.echo("✅ Created .gitignore")
+        return
+
+    # Append if exists
+    current_content = gitignore_path.read_text(encoding="utf-8")
+
+    # simple check to avoid duplication (imperfect but sufficient for init)
+    if ".nexus" in current_content:
+        click.echo("⚠️  .nexus already in .gitignore, skipping update.")
+        return
+
+    with gitignore_path.open("a", encoding="utf-8") as f:
+        f.write("\n".join(new_lines))
+
+    click.echo(f"✅ Updated .gitignore ({choice})")
 
 
 @cli.command("index")
