@@ -775,6 +775,7 @@ async def record_lesson(
     problem: str,
     solution: str,
     context: str | None = None,
+    code_snippet: str | None = None,
     project_id: str | None = None,
 ) -> str:
     """Record a learned lesson from debugging or problem-solving.
@@ -789,6 +790,8 @@ async def record_lesson(
         solution: How the problem was resolved.
                   Example: "Added null check before calling get_user() and return early if None"
         context: Optional additional context like file path, library, error message.
+        code_snippet: Optional code snippet that demonstrates the problem or solution.
+                      This is highly recommended to provide concrete examples.
         project_id: Optional project identifier. Uses current project if not specified.
 
     Returns:
@@ -816,6 +819,9 @@ async def record_lesson(
 
     if context:
         lesson_parts.extend(["", "## Context", context])
+
+    if code_snippet:
+        lesson_parts.extend(["", "## Code", "```", code_snippet, "```"])
 
     lesson_text = "\n".join(lesson_parts)
 
