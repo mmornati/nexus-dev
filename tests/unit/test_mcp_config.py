@@ -85,3 +85,72 @@ def test_mcp_config_get_active_servers(valid_config_data):
     active_servers = config.get_active_servers()
     assert len(active_servers) == 1
     assert active_servers[0].command == "python"
+
+
+def test_mcp_config_save(tmp_path, valid_config_data):
+    """Test saving MCP configuration to a file."""
+    config = MCPConfig(
+        version=valid_config_data["version"],
+        servers={
+            name: MCPServerConfig(**cfg) for name, cfg in valid_config_data["servers"].items()
+        },
+    )
+
+    config_path = tmp_path / "saved_config.json"
+    config.save(config_path)
+
+    assert config_path.exists()
+
+    # Verify saved content
+    with open(config_path, encoding="utf-8") as f:
+        saved_data = json.load(f)
+
+    assert saved_data["version"] == "1.0"
+    assert "test-server" in saved_data["servers"]
+    assert saved_data["servers"]["test-server"]["command"] == "python"
+    assert saved_data["servers"]["test-server"]["args"] == ["-m", "test_server"]
+    assert saved_data["servers"]["test-server"]["env"] == {"DEBUG": "true"}
+    assert saved_data["servers"]["test-server"]["enabled"] is True
+
+
+def test_mcp_config_save_empty(tmp_path):
+    """Test saving an empty MCP configuration."""
+    config = MCPConfig(version="1.0", servers={})
+
+    config_path = tmp_path / "empty_config.json"
+    config.save(config_path)
+
+    assert config_path.exists()
+
+    # Verify saved content
+    with open(config_path, encoding="utf-8") as f:
+        saved_data = json.load(f)
+
+    assert saved_data["version"] == "1.0"
+    assert saved_data["servers"] == {}
+
+
+def test_mcp_config_save_and_load_roundtrip(tmp_path, valid_config_data):
+    """Test that save and load are consistent (roundtrip)."""
+    config = MCPConfig(
+        version=valid_config_data["version"],
+        servers={
+            name: MCPServerConfig(**cfg) for name, cfg in valid_config_data["servers"].items()
+        },
+    )
+
+    config_path = tmp_path / "roundtrip_config.json"
+    config.save(config_path)
+
+    # Load it back
+    loaded_config = MCPConfig.load(config_path)
+
+    assert loaded_config.version == config.version
+    assert len(loaded_config.servers) == len(config.servers)
+    for name, server in config.servers.items():
+        assert name in loaded_config.servers
+        loaded_server = loaded_config.servers[name]
+        assert loaded_server.command == server.command
+        assert loaded_server.args == server.args
+        assert loaded_server.env == server.env
+        assert loaded_server.enabled == server.enabled

@@ -656,6 +656,81 @@ async def _index_mcp_servers(mcp_config: dict[str, Any], server_names: list[str]
     click.echo("Done!")
 
 
+@cli.group("mcp")
+def mcp_group() -> None:
+    """Manage MCP server configurations."""
+
+
+@mcp_group.command("init")
+@click.option(
+    "--from-global",
+    is_flag=True,
+    help="Import servers from ~/.config/mcp/config.json",
+)
+def mcp_init_command(from_global: bool) -> None:
+    """Initialize MCP configuration for this project.
+
+    Creates .nexus/mcp_config.json with an empty configuration
+    or imports from your global MCP config.
+
+    Examples:
+        nexus-mcp init
+        nexus-mcp init --from-global
+    """
+    from .mcp_config import MCPConfig, MCPServerConfig
+
+    config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+
+    if config_path.exists() and not click.confirm("MCP config exists. Overwrite?"):
+        click.echo("Aborted.")
+        return
+
+    # Ensure .nexus directory exists
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if from_global:
+        # Import from global config
+        global_path = Path.home() / ".config" / "mcp" / "config.json"
+        if not global_path.exists():
+            click.echo(f"Global config not found: {global_path}")
+            return
+
+        try:
+            global_config = json.loads(global_path.read_text())
+        except json.JSONDecodeError as e:
+            click.echo(f"❌ Invalid JSON in global config: {e}")
+            return
+
+        servers = {}
+
+        for name, cfg in global_config.get("mcpServers", {}).items():
+            servers[name] = MCPServerConfig(
+                command=cfg.get("command", ""),
+                args=cfg.get("args", []),
+                env=cfg.get("env", {}),
+                enabled=True,
+            )
+
+        mcp_config = MCPConfig(
+            version="1.0",
+            servers=servers,
+        )
+        click.echo(f"Imported {len(servers)} servers from global config")
+    else:
+        # Create empty config
+        mcp_config = MCPConfig(
+            version="1.0",
+            servers={},
+        )
+
+    mcp_config.save(config_path)
+    click.echo(f"Created {config_path}")
+    click.echo("")
+    click.echo("Next steps:")
+    click.echo("  nexus-mcp add <server-name> --command <cmd>")
+    click.echo("  nexus-mcp list")
+
+
 # Entry points for pyproject.toml scripts
 def init_command_entry() -> None:
     """Entry point for nexus-init."""
@@ -675,6 +750,13 @@ def index_mcp_command_entry() -> None:
     import sys
 
     cli(["index-mcp"] + sys.argv[1:])
+
+
+def mcp_command_entry() -> None:
+    """Entry point for nexus-mcp."""
+    import sys
+
+    cli(["mcp"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

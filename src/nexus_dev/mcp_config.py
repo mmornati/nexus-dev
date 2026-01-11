@@ -70,6 +70,35 @@ class MCPConfig:
         """
         return [s for s in self.servers.values() if s.enabled]
 
+    def save(self, path: str | Path) -> None:
+        """Save configuration to a JSON file.
+
+        Args:
+            path: Path to save the configuration file.
+        """
+        path = Path(path)
+
+        # Convert to dictionary format
+        data = {
+            "version": self.version,
+            "servers": {
+                name: {
+                    "command": server.command,
+                    "args": server.args,
+                    "env": server.env,
+                    "enabled": server.enabled,
+                }
+                for name, server in self.servers.items()
+            },
+        }
+
+        # Validate before saving
+        self.validate(data)
+
+        # Write to file
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
     @staticmethod
     def validate(data: dict[str, Any]) -> None:
         """Validate configuration data against the JSON schema.
