@@ -1536,30 +1536,34 @@ class TestGetActiveToolsResource:
     async def test_get_active_tools_filters_by_active_servers(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
-        """Test get_active_tools_resource only shows tools from active servers."""
+        """Test get_active_tools_resource only shows tools from active servers.
+        
+        This test verifies that when multiple servers' tools exist in the database,
+        only tools from servers in the active profile are returned.
+        """
         from nexus_dev.server import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "dev"
         mock_get_mcp_config.return_value = mock_config
 
-        # Only github is active
+        # Only github is in the active profile
         mock_get_active_server_names.return_value = ["github"]
 
-        # Mock database returns tools from multiple servers
+        # Mock database returns tools from both active and inactive servers
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
             return_value=[
                 make_search_result(
                     doc_type="tool",
                     name="create_issue",
-                    server_name="github",
+                    server_name="github",  # Active server
                     text="GitHub tool",
                 ),
                 make_search_result(
                     doc_type="tool",
                     name="turn_on_light",
-                    server_name="homeassistant",
+                    server_name="homeassistant",  # Inactive server
                     text="Home Assistant tool",
                 ),
             ]
@@ -1568,9 +1572,9 @@ class TestGetActiveToolsResource:
 
         result = await get_active_tools_resource()
 
-        # Only github tool should be in output
+        # Only github tool should be in output (active server)
         assert "github" in result
         assert "create_issue" in result
-        # homeassistant tools should NOT be shown (not in active servers)
+        # homeassistant tools should NOT be shown (inactive server)
         assert "homeassistant" not in result
         assert "turn_on_light" not in result
