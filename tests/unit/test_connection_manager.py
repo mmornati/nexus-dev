@@ -371,3 +371,103 @@ class TestExceptions:
         assert MCPConnectionError != MCPTimeoutError
         assert not issubclass(MCPConnectionError, MCPTimeoutError)
         assert not issubclass(MCPTimeoutError, MCPConnectionError)
+
+
+class TestConcurrentConnections:
+    """Tests for concurrent connection handling."""
+
+    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
+    @pytest.mark.asyncio
+    async def test_concurrent_get_connections(self, mock_conn_cls, mock_config):
+        """Test multiple concurrent get_connection calls."""
+        manager = ConnectionManager()
+        mock_conn_instance = AsyncMock()
+        mock_conn_instance.connect.return_value = AsyncMock(spec=ClientSession)
+        mock_conn_cls.return_value = mock_conn_instance
+
+        # Simulate concurrent requests for same server
+        results = await asyncio.gather(
+            manager.get_connection("s1", mock_config),
+            manager.get_connection("s1", mock_config),
+            manager.get_connection("s1", mock_config),
+        )
+
+        # Should only create one connection
+        assert mock_conn_cls.call_count == 1
+        assert all(r is not None for r in results)
+
+    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
+    @pytest.mark.asyncio
+    async def test_concurrent_different_servers(self, mock_conn_cls, mock_config):
+        """Test concurrent connections to different servers."""
+        manager = ConnectionManager()
+        mock_conn_instance = AsyncMock()
+        mock_conn_instance.connect.return_value = AsyncMock(spec=ClientSession)
+        mock_conn_cls.return_value = mock_conn_instance
+
+        # Concurrent requests for different servers
+        await asyncio.gather(
+            manager.get_connection("s1", mock_config),
+            manager.get_connection("s2", mock_config),
+            manager.get_connection("s3", mock_config),
+        )
+
+        # Should create 3 separate connections
+        assert mock_conn_cls.call_count == 3
+
+    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
+    @pytest.mark.asyncio
+    async def test_concurrent_invoke_tool_same_server(self, mock_conn_cls, mock_config):
+        """Test concurrent tool invocations on same server."""
+        manager = ConnectionManager()
+        mock_conn_instance = AsyncMock()
+        mock_conn_instance.invoke_with_timeout.return_value = "result"
+        mock_conn_cls.return_value = mock_conn_instance
+
+        results = await asyncio.gather(
+            manager.invoke_tool("s1", mock_config, "tool1", {}),
+            manager.invoke_tool("s1", mock_config, "tool2", {}),
+        )
+
+        # Both should succeed
+        assert results == ["result", "result"]
+        # Only one connection created
+        assert mock_conn_cls.call_count == 1
+
+
+class TestConnectionEdgeCases:
+    """Tests for edge cases in connection handling."""
+
+    @pytest.mark.asyncio
+    async def test_disconnect_clears_session(self, mock_config):
+        """Test that disconnect properly clears session."""
+        conn = MCPConnection(name="test", config=mock_config)
+        mock_session = AsyncMock(spec=ClientSession)
+        conn.session = mock_session
+        conn._cleanup_stack = []
+
+        await conn.disconnect()
+
+        assert conn.session is None
+
+    @patch("nexus_dev.gateway.connection_manager.stdio_client")
+    @pytest.mark.asyncio
+    async def test_connect_while_cleanup_in_progress(self, mock_stdio, mock_config):
+        """Test connect behavior when previous session was stale."""
+        conn = MCPConnection(name="test", config=mock_config, max_retries=1, retry_delay=0.01)
+
+        # Simulate stale session that fails ping
+        old_session = AsyncMock(spec=ClientSession)
+        old_session.send_ping = AsyncMock(side_effect=Exception("Stale"))
+        conn.session = old_session
+
+        # Mock transport context manager to fail (no real server)
+        mock_transport_cm = AsyncMock()
+        mock_transport_cm.__aenter__.side_effect = Exception("No server")
+        mock_stdio.return_value = mock_transport_cm
+
+        with pytest.raises(MCPConnectionError):
+            await conn.connect()
+
+        # Old session should be cleared
+        assert conn.session is None
