@@ -1034,6 +1034,34 @@ class TestGetToolSchema:
         assert "github" in result
         assert "Connection refused" in result
 
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_handles_timeout_error(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test get_tool_schema handles MCPTimeoutError."""
+        from nexus_dev.gateway.connection_manager import MCPTimeoutError
+        from nexus_dev.server import get_tool_schema
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.get_connection = AsyncMock(
+            side_effect=MCPTimeoutError("Connection timed out")
+        )
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await get_tool_schema("github", "create_issue")
+
+        assert "Error connecting" in result
+        assert "timed out" in result
+
 
 class TestInvokeTool:
     """Test suite for invoke_tool tool."""
@@ -1172,6 +1200,62 @@ class TestInvokeTool:
 
         assert "Tool invocation failed" in result
         assert "Connection refused" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_handles_timeout_error(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test invoke_tool handles MCPTimeoutError specifically."""
+        from nexus_dev.gateway.connection_manager import MCPTimeoutError
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(
+            side_effect=MCPTimeoutError("Tool 'slow_tool' timed out after 30.0s")
+        )
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("github", "slow_tool", {})
+
+        assert "Tool invocation failed" in result
+        assert "timed out" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_handles_connection_error(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test invoke_tool handles MCPConnectionError specifically."""
+        from nexus_dev.gateway.connection_manager import MCPConnectionError
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(
+            side_effect=MCPConnectionError("Failed to connect to github after 3 attempts")
+        )
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("github", "create_issue", {})
+
+        assert "Tool invocation failed" in result
+        assert "Failed to connect" in result
 
     @pytest.mark.asyncio
     @patch("nexus_dev.server._get_connection_manager")
