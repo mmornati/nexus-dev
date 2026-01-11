@@ -729,3 +729,72 @@ class TestMCPConfigLoading:
         active_names = _get_active_server_names()
 
         assert active_names == ["server1"]
+
+    @patch("nexus_dev.server._get_mcp_config")
+    def test_get_active_server_names_no_config(self, mock_get_mcp_config):
+        """Test _get_active_server_names returns empty list if no config."""
+        from nexus_dev.server import _get_active_server_names
+
+        mock_get_mcp_config.return_value = None
+
+        active_names = _get_active_server_names()
+
+        assert active_names == []
+
+    @patch("nexus_dev.server._mcp_config", None)
+    @patch("nexus_dev.server.MCPConfig")
+    @patch("nexus_dev.server.Path")
+    def test_get_mcp_config_handles_exception(self, mock_path, mock_mcp_config):
+        """Test _get_mcp_config handles loading exceptions."""
+        import nexus_dev.server as server
+        from nexus_dev.server import _get_mcp_config
+
+        server._mcp_config = None
+
+        mock_path_obj = MagicMock()
+        mock_path_obj.exists.return_value = True
+        mock_path.cwd.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_obj
+
+        mock_mcp_config.load.side_effect = Exception("Config error")
+
+        config = _get_mcp_config()
+
+        assert config is None
+
+
+class TestMain:
+    """Test suite for main entry point."""
+
+    @patch("nexus_dev.server.mcp")
+    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_config")
+    def test_main_initializes_components(
+        self, mock_get_config, mock_get_db, mock_get_mcp_config, mock_mcp
+    ):
+        """Test main initializes components and runs server."""
+        from nexus_dev.server import main
+
+        main()
+
+        mock_get_config.assert_called_once()
+        mock_get_db.assert_called_once()
+        mock_get_mcp_config.assert_called_once()
+        mock_mcp.run.assert_called_once_with(transport="stdio")
+
+    @patch("nexus_dev.server.mcp")
+    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_config")
+    def test_main_handles_init_exception(
+        self, mock_get_config, mock_get_db, mock_get_mcp_config, mock_mcp
+    ):
+        """Test main handles initialization exceptions."""
+        from nexus_dev.server import main
+
+        mock_get_config.side_effect = Exception("Init error")
+
+        main()
+
+        mock_get_config.assert_called_once()
+        mock_mcp.run.assert_called_once_with(transport="stdio")
