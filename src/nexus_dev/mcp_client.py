@@ -104,12 +104,11 @@ def expand_env_vars(env: dict[str, str]) -> dict[str, str]:
     result = {}
     pattern = re.compile(r"\$\{(\w+)\}")
 
+    def replacer(match: re.Match[str]) -> str:
+        var_name = match.group(1)
+        return os.environ.get(var_name, "")
+
     for key, value in env.items():
-
-        def replacer(match: re.Match[str]) -> str:
-            var_name = match.group(1)
-            return os.environ.get(var_name, "")
-
         result[key] = pattern.sub(replacer, value)
 
     return result
