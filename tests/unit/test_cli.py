@@ -1563,3 +1563,167 @@ class TestCliMCPProfile:
             updated_config = json.loads(config_path.read_text())
             assert "dev" in updated_config["profiles"]
             assert "github" in updated_config["profiles"]["dev"]
+
+
+class TestCliMCPEnable:
+    """Test suite for nexus-mcp enable command."""
+
+    def test_mcp_enable_success(self, runner, tmp_path):
+        """Test enabling a server successfully."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with disabled server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-github"],
+                        "enabled": False,
+                    }
+                },
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "enable", "github"])
+
+            assert result.exit_code == 0
+            assert "github: enabled" in result.output
+
+            # Verify server was enabled
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["servers"]["github"]["enabled"] is True
+
+    def test_mcp_enable_already_enabled(self, runner, tmp_path):
+        """Test enabling a server that's already enabled."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with enabled server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "enable", "github"])
+
+            assert result.exit_code == 0
+            assert "github: enabled" in result.output
+
+            # Verify server is still enabled
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["servers"]["github"]["enabled"] is True
+
+    def test_mcp_enable_server_not_found(self, runner, tmp_path):
+        """Test enabling a server that doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config without the server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "enable", "nonexistent"])
+
+            assert result.exit_code == 0
+            assert "Server not found: nonexistent" in result.output
+
+    def test_mcp_enable_no_config(self, runner, tmp_path):
+        """Test enabling a server when config doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["mcp", "enable", "github"])
+
+            assert "Run 'nexus-mcp init' first" in result.output
+
+
+class TestCliMCPDisable:
+    """Test suite for nexus-mcp disable command."""
+
+    def test_mcp_disable_success(self, runner, tmp_path):
+        """Test disabling a server successfully."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with enabled server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-github"],
+                        "enabled": True,
+                    }
+                },
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "disable", "github"])
+
+            assert result.exit_code == 0
+            assert "github: disabled" in result.output
+
+            # Verify server was disabled
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["servers"]["github"]["enabled"] is False
+
+    def test_mcp_disable_already_disabled(self, runner, tmp_path):
+        """Test disabling a server that's already disabled."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with disabled server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": False}},
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "disable", "github"])
+
+            assert result.exit_code == 0
+            assert "github: disabled" in result.output
+
+            # Verify server is still disabled
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["servers"]["github"]["enabled"] is False
+
+    def test_mcp_disable_server_not_found(self, runner, tmp_path):
+        """Test disabling a server that doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config without the server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "disable", "nonexistent"])
+
+            assert result.exit_code == 0
+            assert "Server not found: nonexistent" in result.output
+
+    def test_mcp_disable_no_config(self, runner, tmp_path):
+        """Test disabling a server when config doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["mcp", "disable", "github"])
+
+            assert "Run 'nexus-mcp init' first" in result.output

@@ -900,6 +900,40 @@ def mcp_profile_command(
     mcp_config.save(config_path)
 
 
+def _set_server_enabled(name: str, enabled: bool) -> None:
+    """Set server enabled status."""
+    config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+    if not config_path.exists():
+        click.echo("Run 'nexus-mcp init' first")
+        return
+
+    mcp_config = MCPConfig.load(config_path)
+
+    if name not in mcp_config.servers:
+        click.echo(f"Server not found: {name}")
+        return
+
+    mcp_config.servers[name].enabled = enabled
+    mcp_config.save(config_path)
+
+    status = "enabled" if enabled else "disabled"
+    click.echo(f"{name}: {status}")
+
+
+@mcp_group.command("enable")
+@click.argument("name")
+def mcp_enable_command(name: str) -> None:
+    """Enable an MCP server."""
+    _set_server_enabled(name, True)
+
+
+@mcp_group.command("disable")
+@click.argument("name")
+def mcp_disable_command(name: str) -> None:
+    """Disable an MCP server."""
+    _set_server_enabled(name, False)
+
+
 # Entry points for pyproject.toml scripts
 def init_command_entry() -> None:
     """Entry point for nexus-init."""
