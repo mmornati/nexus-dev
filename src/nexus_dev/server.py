@@ -863,18 +863,15 @@ async def get_active_tools_resource() -> str:
     if not active_servers:
         return f"No active servers in profile: {mcp_config.active_profile}"
 
-    # Query tools from active servers
-    tools = []
-    for server in active_servers:
-        # Use async search with doc_type filter
-        results = await database.search(
-            query="",
-            doc_type=DocumentType.TOOL,
-            limit=1000,  # Get all tools for this server
-        )
-        # Filter by server name in results
-        server_tools = [r for r in results if r.server_name == server]
-        tools.extend(server_tools)
+    # Query all tools once from the database
+    all_tools = await database.search(
+        query="",
+        doc_type=DocumentType.TOOL,
+        limit=1000,  # Get all tools
+    )
+
+    # Filter tools by active servers
+    tools = [t for t in all_tools if t.server_name in active_servers]
 
     # Format output
     output = [f"# Active Tools (profile: {mcp_config.active_profile})", ""]
