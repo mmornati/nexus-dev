@@ -762,6 +762,92 @@ class TestMCPConfigLoading:
         assert config is None
 
 
+class TestListServers:
+    """Test suite for list_servers tool."""
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_list_servers_no_config(self, mock_get_mcp_config):
+        """Test list_servers returns message when no config exists."""
+        from nexus_dev.server import list_servers
+
+        mock_get_mcp_config.return_value = None
+
+        result = await list_servers()
+
+        assert "No MCP config" in result
+        assert "nexus-mcp init" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_list_servers_with_active_servers(self, mock_get_mcp_config):
+        """Test list_servers shows active servers."""
+        from nexus_dev.server import list_servers
+
+        mock_server1 = MagicMock()
+        mock_server1.command = "python"
+        mock_server1.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"test-server": mock_server1}
+        mock_config.get_active_servers.return_value = [mock_server1]
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await list_servers()
+
+        assert "MCP Servers" in result
+        assert "### Active" in result
+        assert "test-server" in result
+        assert "python" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_list_servers_with_disabled_servers(self, mock_get_mcp_config):
+        """Test list_servers shows disabled servers."""
+        from nexus_dev.server import list_servers
+
+        mock_server1 = MagicMock()
+        mock_server1.command = "python"
+        mock_server1.enabled = True
+
+        mock_server2 = MagicMock()
+        mock_server2.command = "node"
+        mock_server2.enabled = False
+
+        mock_config = MagicMock()
+        mock_config.servers = {
+            "active-server": mock_server1,
+            "disabled-server": mock_server2,
+        }
+        mock_config.get_active_servers.return_value = [mock_server1]
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await list_servers()
+
+        assert "### Active" in result
+        assert "active-server" in result
+        assert "### Disabled" in result
+        assert "disabled-server" in result
+        assert "disabled" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_list_servers_empty_config(self, mock_get_mcp_config):
+        """Test list_servers with empty servers config."""
+        from nexus_dev.server import list_servers
+
+        mock_config = MagicMock()
+        mock_config.servers = {}
+        mock_config.get_active_servers.return_value = []
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await list_servers()
+
+        assert "MCP Servers" in result
+        assert "No active servers" in result
+        assert "No disabled servers" in result
+
+
 class TestMain:
     """Test suite for main entry point."""
 
