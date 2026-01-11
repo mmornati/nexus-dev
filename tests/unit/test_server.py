@@ -1322,3 +1322,183 @@ class TestInvokeTool:
         result = await invoke_tool("test", "binary_tool", {})
 
         assert "Binary content" in result
+
+
+class TestGetActiveToolsResource:
+    """Test suite for get_active_tools_resource resource."""
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_no_config(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource returns message when no config exists."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_get_mcp_config.return_value = None
+
+        result = await get_active_tools_resource()
+
+        assert "No MCP config" in result
+        assert "nexus-mcp init" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_no_active_servers(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource with no active servers."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_config = MagicMock()
+        mock_config.active_profile = "default"
+        mock_get_mcp_config.return_value = mock_config
+        mock_get_active_server_names.return_value = []
+
+        result = await get_active_tools_resource()
+
+        assert "No active servers" in result
+        assert "default" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_with_tools(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource returns tools grouped by server."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_config = MagicMock()
+        mock_config.active_profile = "development"
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_get_active_server_names.return_value = ["github", "homeassistant"]
+
+        # Mock database search results
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="create_issue",
+                    server_name="github",
+                    text="Create a new GitHub issue in a repository",
+                ),
+                make_search_result(
+                    doc_type="tool",
+                    name="create_pull_request",
+                    server_name="github",
+                    text="Create a new pull request",
+                ),
+                make_search_result(
+                    doc_type="tool",
+                    name="turn_on_light",
+                    server_name="homeassistant",
+                    text="Turn on a light in Home Assistant",
+                ),
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await get_active_tools_resource()
+
+        # Check header
+        assert "Active Tools (profile: development)" in result
+
+        # Check server sections
+        assert "## github" in result
+        assert "## homeassistant" in result
+
+        # Check tools are listed
+        assert "create_issue" in result
+        assert "create_pull_request" in result
+        assert "turn_on_light" in result
+
+        # Check descriptions are included
+        assert "Create a new GitHub issue" in result
+        assert "Turn on a light" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_server_with_no_tools(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource with server that has no tools."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_config = MagicMock()
+        mock_config.active_profile = "default"
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_get_active_server_names.return_value = ["empty-server", "github"]
+
+        # Mock database returns tools only for github
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="create_issue",
+                    server_name="github",
+                    text="Create a GitHub issue",
+                )
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await get_active_tools_resource()
+
+        # Both servers should be in output
+        assert "## empty-server" in result
+        assert "## github" in result
+
+        # Empty server should show "No tools found"
+        assert "No tools found" in result
+        assert "create_issue" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.server._get_active_server_names")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_active_tools_truncates_long_descriptions(
+        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    ):
+        """Test get_active_tools_resource truncates descriptions longer than 100 chars."""
+        from nexus_dev.server import get_active_tools_resource
+
+        mock_config = MagicMock()
+        mock_config.active_profile = "default"
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_get_active_server_names.return_value = ["test-server"]
+
+        long_description = "A" * 150  # 150 character description
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="long_tool",
+                    server_name="test-server",
+                    text=long_description,
+                )
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await get_active_tools_resource()
+
+        # Check that description is truncated to 100 chars + "..."
+        assert "long_tool" in result
+        assert "..." in result
+        # The full 150-char description should not be in the output
+        assert long_description not in result
