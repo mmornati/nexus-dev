@@ -58,7 +58,13 @@ def _get_mcp_config() -> MCPConfig | None:
     """
     global _mcp_config
     if _mcp_config is None:
+        # Try CWD first
         config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+
+        # Fallback to known project path if CWD fails (hack for testing)
+        if not config_path.exists():
+            config_path = Path("/Users/mmornati/Projects/nexus-dev/.nexus/mcp_config.json")
+
         if config_path.exists():
             try:
                 _mcp_config = MCPConfig.load(config_path)
@@ -464,6 +470,16 @@ async def search_tools(
         doc_type=DocumentType.TOOL,
         limit=limit,
     )
+    import sys
+
+    print(f"DEBUG: Searching tools with query='{query}'", file=sys.stderr)
+    try:
+        print(f"DEBUG: DB Path in use: {database.config.get_db_path()}", file=sys.stderr)
+    except Exception as e:
+        print(f"DEBUG: Could not print DB path: {e}", file=sys.stderr)
+    print(f"DEBUG: Results found: {len(results)}", file=sys.stderr)
+    if results:
+        print(f"DEBUG: First result: {results[0].name} ({results[0].score})", file=sys.stderr)
 
     # Filter by server if specified
     if server and results:
@@ -514,7 +530,12 @@ async def list_servers() -> str:
     if active_names:
         for name in sorted(active_names):
             server = mcp_config.servers[name]
-            output.append(f"- **{name}**: `{server.command}`")
+            details = ""
+            if server.transport == "sse":
+                details = f"SSE: {server.url}"
+            else:
+                details = f"Command: {server.command} {' '.join(server.args)}"
+            output.append(f"- **{name}**: `{details}`")
     else:
         output.append("*No active servers*")
 

@@ -602,6 +602,125 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_project_config_success(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test indexing from project-specific .nexus/mcp_config.json."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create project-specific MCP config
+            mcp_dir = Path.cwd() / ".nexus"
+            mcp_dir.mkdir()
+            mcp_config_path = mcp_dir / "mcp_config.json"
+            mcp_config = {
+                "version": "1.0",
+                "servers": {
+                    "project-server": {
+                        "command": "test-cmd",
+                        "args": ["arg1"],
+                        "env": {},
+                        "enabled": True,
+                    }
+                },
+                "profiles": {"default": ["project-server"]},
+                "active_profile": "default",
+            }
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            # Mock embedder
+            mock_embedder = MagicMock()
+            mock_embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+            mock_embedder_fn.return_value = mock_embedder
+
+            # Mock database
+            mock_db = MagicMock()
+            mock_db.upsert_document = AsyncMock()
+            mock_db_cls.return_value = mock_db
+
+            # Mock MCP client
+            mock_client = MagicMock()
+            mock_client.get_tools = AsyncMock(return_value=[])
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(cli, ["index-mcp", "--all"])
+
+            assert result.exit_code == 0
+            assert "Indexing tools from: project-server" in result.output
+
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_priority(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test that project config takes priority over global config."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create global config
+            global_config_dir = Path.home() / ".config" / "mcp"
+            global_config_dir.mkdir(parents=True, exist_ok=True)
+            global_config_path = global_config_dir / "config.json"
+            global_config_path.write_text('{"mcpServers": {"global-server": {"command": "cmd"}}}')
+
+            # Create project config
+            mcp_dir = Path.cwd() / ".nexus"
+            mcp_dir.mkdir()
+            mcp_config_path = mcp_dir / "mcp_config.json"
+            mcp_config = {
+                "version": "1.0",
+                "servers": {"project-server": {"command": "cmd", "enabled": True}},
+            }
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            # Mock dependencies
+            mock_client = MagicMock()
+            mock_client.get_tools = AsyncMock(return_value=[])
+            mock_client_cls.return_value = mock_client
+            mock_db = MagicMock()
+            mock_db_cls.return_value = mock_db
+            mock_embedder = MagicMock()
+            mock_embedder_fn.return_value = mock_embedder
+
+            result = runner.invoke(cli, ["index-mcp", "--all"])
+
+            assert result.exit_code == 0
+            assert "Indexing tools from: project-server" in result.output
+            assert "global-server" not in result.output
+
+            # Cleanup global config
+            global_config_path.unlink()
+
     def test_index_mcp_no_nexus_config(self, runner, tmp_path):
         """Test index-mcp fails when nexus_config.json is not found."""
         with runner.isolated_filesystem(temp_dir=tmp_path):

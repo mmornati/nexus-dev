@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import jsonschema  # type: ignore[import-untyped]
 
@@ -14,10 +14,13 @@ import jsonschema  # type: ignore[import-untyped]
 class MCPServerConfig:
     """Individual MCP server configuration."""
 
-    command: str
+    command: str | None = None
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
+    transport: Literal["stdio", "sse", "http"] = "stdio"
+    url: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
     timeout: float = 30.0  # Tool execution timeout
     connect_timeout: float = 10.0  # Connection timeout
 
@@ -65,10 +68,13 @@ class MCPConfig:
 
         servers = {
             name: MCPServerConfig(
-                command=cfg["command"],
+                command=cfg.get("command"),
                 args=cfg.get("args", []),
                 env=cfg.get("env", {}),
                 enabled=cfg.get("enabled", True),
+                transport=cfg.get("transport", "stdio"),
+                url=cfg.get("url"),
+                headers=cfg.get("headers", {}),
                 timeout=cfg.get("timeout", 30.0),
                 connect_timeout=cfg.get("connect_timeout", 10.0),
             )
@@ -127,12 +133,19 @@ class MCPConfig:
             "version": self.version,
             "servers": {
                 name: {
-                    "command": server.command,
-                    "args": server.args,
-                    "env": server.env,
-                    "enabled": server.enabled,
-                    "timeout": server.timeout,
-                    "connect_timeout": server.connect_timeout,
+                    k: v
+                    for k, v in {
+                        "command": server.command,
+                        "args": server.args,
+                        "env": server.env,
+                        "enabled": server.enabled,
+                        "transport": server.transport,
+                        "url": server.url,
+                        "headers": server.headers,
+                        "timeout": server.timeout,
+                        "connect_timeout": server.connect_timeout,
+                    }.items()
+                    if v is not None
                 }
                 for name, server in self.servers.items()
             },

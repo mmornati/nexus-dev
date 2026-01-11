@@ -242,9 +242,23 @@ class NexusDatabase:
             self._table = self._db.open_table(self.TABLE_NAME)
 
     def _ensure_connected(self) -> lancedb.table.Table:
-        """Ensure database is connected and return table."""
-        if self._table is None:
+        """Ensure database is connected and return table.
+
+        We re-open the table to ensure we see the latest updates from other processes.
+        """
+        if self._db is None:
             self.connect()
+        assert self._db is not None
+
+        # Always re-open table to pick up external updates (e.g. from indexer)
+        try:
+            self._table = self._db.open_table(self.TABLE_NAME)
+        except Exception:
+            # Table might not exist yet if created but not committed, or other issue
+            # If so, rely on connect()'s creation logic or handle error
+            if self._table is None:
+                self.connect()
+
         assert self._table is not None
         return self._table
 

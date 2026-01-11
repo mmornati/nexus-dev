@@ -166,6 +166,41 @@ AI uses these Nexus-Dev tools to access other servers:
 3. AI invokes: `invoke_tool("github", "create_issue", {...})`
 4. Nexus-Dev proxies to GitHub MCP
 
+### Server Configuration
+
+You can configure downstream MCP servers in `.nexus/mcp_config.json` using either **Stdio** (local process) or **SSE** (HTTP remote) transports.
+
+**Local Server (Stdio):**
+```json
+{
+  "servers": {
+    "github-local": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "..."
+      }
+    }
+  }
+}
+```
+
+**Remote Server (SSE):**
+```json
+{
+  "servers": {
+    "github-remote": {
+      "transport": "sse",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ..."
+      }
+    }
+  }
+}
+```
+
 ## Configuration
 
 `nexus_config.json` example:
