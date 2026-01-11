@@ -104,3 +104,10 @@ jobs:
               generate_release_notes: true
             });
             console.log(`Created release ${release.html_url}`);
+
+  trigger_publish:
+    needs: prepare_release
+    uses: ./.github/workflows/release.yml
+    with:
+      tag_name: ${{ inputs.version }}
+    secrets: inherit

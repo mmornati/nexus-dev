@@ -3,6 +3,12 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
 
 jobs:
   pypi-publish:
@@ -12,6 +18,8 @@ jobs:
       id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
       
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -36,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -52,9 +62,11 @@ jobs:
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/nexus-dev
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=${{ inputs.tag_name }},enable=${{ inputs.tag_name != '' }}
+            type=raw,value=latest,enable=${{ inputs.tag_name != '' }}
+            type=semver,pattern={{version}},enable=${{ inputs.tag_name == '' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ inputs.tag_name == '' }}
+            type=raw,value=latest,enable=${{ inputs.tag_name == '' && !contains(github.ref, '-') }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
