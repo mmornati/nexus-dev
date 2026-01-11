@@ -95,3 +95,22 @@ async def test_connection_manager_disconnect_all(mock_config):
     assert mock_conn1.disconnect.called
     assert mock_conn2.disconnect.called
     assert len(manager._connections) == 0
+
+
+@patch("nexus_dev.gateway.connection_manager.MCPConnection")
+@pytest.mark.asyncio
+async def test_connection_manager_invoke_tool(mock_conn_cls, mock_config):
+    """Test invoke_tool uses connection and calls tool."""
+    manager = ConnectionManager()
+
+    mock_session = AsyncMock()
+    mock_session.call_tool = AsyncMock(return_value="result")
+
+    mock_conn_instance = AsyncMock()
+    mock_conn_instance.connect.return_value = mock_session
+    mock_conn_cls.return_value = mock_conn_instance
+
+    result = await manager.invoke_tool("test", mock_config, "my_tool", {"arg": "value"})
+
+    assert result == "result"
+    mock_session.call_tool.assert_called_once_with("my_tool", {"arg": "value"})

@@ -1033,3 +1033,208 @@ class TestGetToolSchema:
         assert "Error connecting" in result
         assert "github" in result
         assert "Connection refused" in result
+
+
+class TestInvokeTool:
+    """Test suite for invoke_tool tool."""
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_no_config(self, mock_get_mcp_config):
+        """Test invoke_tool returns message when no config exists."""
+        from nexus_dev.server import invoke_tool
+
+        mock_get_mcp_config.return_value = None
+
+        result = await invoke_tool("github", "create_issue", {"title": "Test"})
+
+        assert "No MCP config" in result
+        assert "nexus-mcp init" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_server_not_found(self, mock_get_mcp_config):
+        """Test invoke_tool returns error for missing server."""
+        from nexus_dev.server import invoke_tool
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": MagicMock()}
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await invoke_tool("unknown", "some_tool", {})
+
+        assert "Server not found" in result
+        assert "unknown" in result
+        assert "Available" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_server_disabled(self, mock_get_mcp_config):
+        """Test invoke_tool returns error for disabled server."""
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = False
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await invoke_tool("github", "create_issue", {})
+
+        assert "Server is disabled" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_success_with_text_content(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test invoke_tool returns formatted result with text content."""
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        # Mock result with text content
+        mock_content_item = MagicMock()
+        mock_content_item.text = "Issue created: #123"
+
+        mock_result = MagicMock()
+        mock_result.content = [mock_content_item]
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(return_value=mock_result)
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("github", "create_issue", {"title": "Test Issue"})
+
+        assert "Issue created: #123" in result
+        mock_conn_manager.invoke_tool.assert_called_once_with(
+            "github", mock_server, "create_issue", {"title": "Test Issue"}
+        )
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_success_no_arguments(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test invoke_tool with no arguments passes empty dict."""
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"homeassistant": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_result = MagicMock()
+        mock_result.content = []
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(return_value=mock_result)
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("homeassistant", "turn_on_lights")
+
+        assert "Tool executed successfully" in result
+        mock_conn_manager.invoke_tool.assert_called_once_with(
+            "homeassistant", mock_server, "turn_on_lights", {}
+        )
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_handles_connection_error(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test invoke_tool handles connection errors."""
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("github", "create_issue", {})
+
+        assert "Tool invocation failed" in result
+        assert "Connection refused" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_multiple_content_items(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test invoke_tool formats multiple content items."""
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        # Mock result with multiple content items
+        mock_item1 = MagicMock()
+        mock_item1.text = "Line 1"
+        mock_item2 = MagicMock()
+        mock_item2.text = "Line 2"
+
+        mock_result = MagicMock()
+        mock_result.content = [mock_item1, mock_item2]
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(return_value=mock_result)
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("github", "some_tool", {})
+
+        assert "Line 1" in result
+        assert "Line 2" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_invoke_tool_non_text_content(self, mock_get_mcp_config, mock_get_conn_manager):
+        """Test invoke_tool handles non-text content items."""
+        from nexus_dev.server import invoke_tool
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"test": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        # Create a simple object without 'text' attribute
+        class NonTextContent:
+            def __str__(self):
+                return "Binary content"
+
+        mock_item = NonTextContent()
+
+        mock_result = MagicMock()
+        mock_result.content = [mock_item]
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.invoke_tool = AsyncMock(return_value=mock_result)
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await invoke_tool("test", "binary_tool", {})
+
+        assert "Binary content" in result
