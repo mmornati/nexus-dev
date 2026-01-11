@@ -24,6 +24,7 @@ from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import create_embedder
 from .mcp_client import MCPClientManager, MCPServerConnection
+from .mcp_config import MCPConfig, MCPServerConfig
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
@@ -677,8 +678,6 @@ def mcp_init_command(from_global: bool) -> None:
         nexus-mcp init
         nexus-mcp init --from-global
     """
-    from .mcp_config import MCPConfig, MCPServerConfig
-
     config_path = Path.cwd() / ".nexus" / "mcp_config.json"
 
     if config_path.exists() and not click.confirm("MCP config exists. Overwrite?"):
@@ -724,11 +723,10 @@ def mcp_init_command(from_global: bool) -> None:
         )
 
     mcp_config.save(config_path)
-    click.echo(f"Created {config_path}")
+    click.echo(f"✅ Created {config_path}")
     click.echo("")
-    click.echo("Next steps:")
-    click.echo("  nexus-mcp add <server-name> --command <cmd>")
-    click.echo("  nexus-mcp list")
+    click.echo("Configuration initialized successfully!")
+    click.echo("You can manually edit the config file to add MCP servers.")
 
 
 # Entry points for pyproject.toml scripts

@@ -637,7 +637,7 @@ class TestCliMCPInit:
             assert config["version"] == "1.0"
             assert config["servers"] == {}
             assert "Created" in result.output
-            assert "Next steps:" in result.output
+            assert "Configuration initialized successfully!" in result.output
 
     def test_mcp_init_from_global_success(self, runner, tmp_path):
         """Test mcp init --from-global imports servers from global config."""
