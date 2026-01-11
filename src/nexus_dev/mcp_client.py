@@ -33,9 +33,6 @@ class MCPServerConnection:
 class MCPClientManager:
     """Manages connections to multiple MCP servers."""
 
-    def __init__(self) -> None:
-        self._connections: dict[str, ClientSession] = {}
-
     async def get_tools(self, server: MCPServerConnection) -> list[MCPToolSchema]:
         """Get all tools from an MCP server.
 
@@ -76,6 +73,10 @@ class MCPClientManager:
         self, server: MCPServerConnection, tool_name: str
     ) -> MCPToolSchema | None:
         """Get schema for a specific tool.
+
+        Note: The MCP protocol doesn't support fetching individual tool schemas,
+        so this method fetches all tools and filters locally. For servers with
+        many tools, consider calling get_tools() once and caching the results.
 
         Args:
             server: Server connection config
