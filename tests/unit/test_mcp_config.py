@@ -465,3 +465,59 @@ def test_mcp_config_gateway_settings_roundtrip(tmp_path):
     loaded = MCPConfig.load(config_path)
     assert loaded.gateway.default_timeout == 120.0
     assert loaded.gateway.max_concurrent_connections == 15
+
+
+def test_mcp_config_active_profile_switching():
+    """Test switching active profiles and verifying active servers change."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "github": MCPServerConfig(command="gh", enabled=True),
+            "gitlab": MCPServerConfig(command="gl", enabled=True),
+            "local": MCPServerConfig(command="local", enabled=True),
+        },
+        profiles={
+            "default": ["github"],
+            "all-git": ["github", "gitlab"],
+            "local-only": ["local"],
+        },
+        active_profile="default",
+    )
+
+    # Initially on default profile
+    active = config.get_active_servers()
+    assert len(active) == 1
+    assert active[0].command == "gh"
+
+    # Switch to all-git profile
+    config.active_profile = "all-git"
+    active = config.get_active_servers()
+    assert len(active) == 2
+    commands = {s.command for s in active}
+    assert commands == {"gh", "gl"}
+
+    # Switch to local-only profile
+    config.active_profile = "local-only"
+    active = config.get_active_servers()
+    assert len(active) == 1
+    assert active[0].command == "local"
+
+
+def test_mcp_config_disabled_server_in_profile():
+    """Test that disabled servers are excluded even if in active profile."""
+    config = MCPConfig(
+        version="1.0",
+        servers={
+            "enabled-server": MCPServerConfig(command="cmd1", enabled=True),
+            "disabled-server": MCPServerConfig(command="cmd2", enabled=False),
+        },
+        profiles={
+            "mixed": ["enabled-server", "disabled-server"],
+        },
+        active_profile="mixed",
+    )
+
+    active = config.get_active_servers()
+    # Should only return enabled server, even though both are in profile
+    assert len(active) == 1
+    assert active[0].command == "cmd1"
