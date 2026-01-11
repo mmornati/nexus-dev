@@ -23,6 +23,7 @@ from .chunkers import ChunkerRegistry
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import create_embedder
+from .mcp_client import MCPClientManager, MCPServerConnection
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
@@ -581,8 +582,6 @@ def index_mcp_command(server: str | None, config: str | None, index_all: bool) -
 
 async def _index_mcp_servers(mcp_config: dict[str, Any], server_names: list[str]) -> None:
     """Index tools from specified MCP servers."""
-    from .mcp_client import MCPClientManager, MCPServerConnection
-
     # Load config
     config_path = Path.cwd() / "nexus_config.json"
     if not config_path.exists():
@@ -657,6 +656,13 @@ def index_command_entry() -> None:
     import sys
 
     cli(["index"] + sys.argv[1:])
+
+
+def index_mcp_command_entry() -> None:
+    """Entry point for nexus-index-mcp."""
+    import sys
+
+    cli(["index-mcp"] + sys.argv[1:])
 
 
 if __name__ == "__main__":
