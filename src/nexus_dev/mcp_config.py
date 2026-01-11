@@ -18,6 +18,16 @@ class MCPServerConfig:
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
+    timeout: float = 30.0  # Tool execution timeout
+    connect_timeout: float = 10.0  # Connection timeout
+
+
+@dataclass
+class GatewaySettings:
+    """Global gateway configuration settings."""
+
+    default_timeout: float = 30.0
+    max_concurrent_connections: int = 5
 
 
 @dataclass
@@ -28,6 +38,7 @@ class MCPConfig:
     servers: dict[str, MCPServerConfig]
     profiles: dict[str, list[str]] = field(default_factory=dict)
     active_profile: str = "default"
+    gateway: GatewaySettings = field(default_factory=GatewaySettings)
 
     @classmethod
     def load(cls, path: str | Path) -> MCPConfig:
@@ -58,6 +69,8 @@ class MCPConfig:
                 args=cfg.get("args", []),
                 env=cfg.get("env", {}),
                 enabled=cfg.get("enabled", True),
+                timeout=cfg.get("timeout", 30.0),
+                connect_timeout=cfg.get("connect_timeout", 10.0),
             )
             for name, cfg in data["servers"].items()
         }
@@ -65,11 +78,18 @@ class MCPConfig:
         profiles = data.get("profiles", {})
         active_profile = data.get("active_profile", "default")
 
+        gateway_data = data.get("gateway", {})
+        gateway = GatewaySettings(
+            default_timeout=gateway_data.get("default_timeout", 30.0),
+            max_concurrent_connections=gateway_data.get("max_concurrent_connections", 5),
+        )
+
         return cls(
             version=data["version"],
             servers=servers,
             profiles=profiles,
             active_profile=active_profile,
+            gateway=gateway,
         )
 
     def get_active_servers(self) -> list[MCPServerConfig]:
@@ -111,11 +131,17 @@ class MCPConfig:
                     "args": server.args,
                     "env": server.env,
                     "enabled": server.enabled,
+                    "timeout": server.timeout,
+                    "connect_timeout": server.connect_timeout,
                 }
                 for name, server in self.servers.items()
             },
             "profiles": self.profiles,
             "active_profile": self.active_profile,
+            "gateway": {
+                "default_timeout": self.gateway.default_timeout,
+                "max_concurrent_connections": self.gateway.max_concurrent_connections,
+            },
         }
 
         # Validate before saving

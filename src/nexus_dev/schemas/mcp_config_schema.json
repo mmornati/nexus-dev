@@ -35,6 +35,18 @@
                             "type": "string"
                         },
                         "default": {}
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": "Tool execution timeout in seconds",
+                        "default": 30,
+                        "minimum": 1
+                    },
+                    "connect_timeout": {
+                        "type": "number",
+                        "description": "Connection timeout in seconds",
+                        "default": 10,
+                        "minimum": 1
                     }
                 },
                 "required": [
@@ -52,6 +64,24 @@
                 }
             },
             "default": {}
+        },
+        "gateway": {
+            "type": "object",
+            "description": "Global gateway settings",
+            "properties": {
+                "default_timeout": {
+                    "type": "number",
+                    "description": "Default tool execution timeout",
+                    "default": 30,
+                    "minimum": 1
+                },
+                "max_concurrent_connections": {
+                    "type": "integer",
+                    "description": "Maximum concurrent connections to backend servers",
+                    "default": 5,
+                    "minimum": 1
+                }
+            }
         },
         "active_profile": {
             "type": "string",

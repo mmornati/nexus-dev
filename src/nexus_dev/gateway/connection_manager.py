@@ -40,7 +40,16 @@ class MCPConnection:
     # Retry configuration
     max_retries: int = 3
     retry_delay: float = 1.0  # seconds (base delay for exponential backoff)
-    timeout: float = 30.0  # seconds for tool invocations
+
+    @property
+    def timeout(self) -> float:
+        """Get tool execution timeout from config."""
+        return self.config.timeout
+
+    @property
+    def connect_timeout(self) -> float:
+        """Get connection timeout from config."""
+        return self.config.connect_timeout
 
     async def connect(self) -> ClientSession:
         """Get or create connection with retry logic."""
@@ -78,6 +87,18 @@ class MCPConnection:
 
     async def _do_connect(self) -> ClientSession:
         """Perform actual connection to MCP server."""
+        try:
+            return await asyncio.wait_for(
+                self._do_connect_impl(),
+                timeout=self.connect_timeout,
+            )
+        except TimeoutError as e:
+            raise MCPConnectionError(
+                f"Connection to {self.name} timed out after {self.connect_timeout}s"
+            ) from e
+
+    async def _do_connect_impl(self) -> ClientSession:
+        """Internal connection implementation."""
         server_params = StdioServerParameters(
             command=self.config.command,
             args=self.config.args,
