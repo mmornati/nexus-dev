@@ -43,6 +43,7 @@ class TestDocument:
         assert DocumentType.CODE.value == "code"
         assert DocumentType.LESSON.value == "lesson"
         assert DocumentType.DOCUMENTATION.value == "documentation"
+        assert DocumentType.TOOL.value == "tool"
 
     def test_document_default_values(self):
         """Test document default values."""
@@ -61,6 +62,46 @@ class TestDocument:
         assert doc.start_line == 0
         assert doc.end_line == 0
         assert doc.timestamp is not None
+        assert doc.server_name == ""
+        assert doc.parameters_schema == ""
+
+    def test_tool_document_type(self):
+        """Test creating a TOOL document type with tool-specific fields."""
+        doc = Document(
+            id="tool-1",
+            text="List files in directory",
+            vector=[0.1, 0.2, 0.3],
+            project_id="mcp-project",
+            file_path="mcp://filesystem/list_directory",
+            doc_type=DocumentType.TOOL,
+            server_name="filesystem",
+            parameters_schema='{"type": "object", "properties": {"path": {"type": "string"}}}',
+        )
+
+        assert doc.doc_type == DocumentType.TOOL
+        assert doc.server_name == "filesystem"
+        expected_schema = '{"type": "object", "properties": {"path": {"type": "string"}}}'
+        assert doc.parameters_schema == expected_schema
+
+    def test_tool_document_to_dict(self):
+        """Test converting TOOL document to dictionary."""
+        doc = Document(
+            id="tool-2",
+            text="Search code",
+            vector=[0.4, 0.5, 0.6],
+            project_id="mcp-project",
+            file_path="mcp://code-search/search",
+            doc_type=DocumentType.TOOL,
+            server_name="code-search",
+            parameters_schema='{"type": "object", "required": ["query"]}',
+        )
+
+        result = doc.to_dict()
+
+        assert result["doc_type"] == "tool"
+        assert result["server_name"] == "code-search"
+        assert result["parameters_schema"] == '{"type": "object", "required": ["query"]}'
+        assert "timestamp" in result
 
 
 class TestGenerateDocumentId:
