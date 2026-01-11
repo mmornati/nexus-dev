@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -78,6 +79,60 @@ class Document:
             "server_name": self.server_name,
             "parameters_schema": self.parameters_schema,
         }
+
+
+@dataclass
+class ToolDocument:
+    """An MCP tool document for indexing and search.
+
+    Attributes:
+        id: Unique identifier (server_name:tool_name)
+        server_name: Name of the MCP server (e.g., "github")
+        tool_name: Name of the tool (e.g., "create_pull_request")
+        description: Tool description/docstring
+        parameters: JSON schema dict for parameters
+        examples: Optional usage examples
+        vector: Embedding vector for semantic search
+        timestamp: When the tool was indexed
+    """
+
+    id: str
+    server_name: str
+    tool_name: str
+    description: str
+    parameters: dict[str, Any]
+    vector: list[float]
+    examples: list[str] = field(default_factory=list)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for LanceDB insertion."""
+        return {
+            "id": self.id,
+            "text": self.get_searchable_text(),
+            "vector": self.vector,
+            "project_id": "mcp_tools",  # Special project for tools
+            "file_path": f"mcp://{self.server_name}/{self.tool_name}",
+            "doc_type": DocumentType.TOOL.value,
+            "chunk_type": "tool",
+            "language": "mcp",
+            "name": self.tool_name,
+            "start_line": 0,
+            "end_line": 0,
+            "timestamp": self.timestamp.isoformat(),
+            "server_name": self.server_name,
+            "parameters_schema": json.dumps(self.parameters),
+        }
+
+    def get_searchable_text(self) -> str:
+        """Get text for embedding generation."""
+        parts = [
+            f"MCP Tool: {self.server_name}.{self.tool_name}",
+            f"Description: {self.description}",
+        ]
+        if self.examples:
+            parts.append(f"Examples: {', '.join(self.examples)}")
+        return "\n".join(parts)
 
 
 @dataclass
@@ -437,3 +492,30 @@ def generate_document_id(
     # Create a deterministic ID from the combination
     key = f"{project_id}:{file_path}:{chunk_name}:{start_line}"
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, key))
+
+
+def tool_document_from_schema(
+    server_name: str,
+    tool_name: str,
+    schema: dict[str, Any],
+    vector: list[float],
+) -> ToolDocument:
+    """Create ToolDocument from MCP tool schema.
+
+    Args:
+        server_name: Name of the MCP server.
+        tool_name: Name of the tool.
+        schema: MCP tool schema dictionary.
+        vector: Embedding vector for the tool.
+
+    Returns:
+        ToolDocument instance.
+    """
+    return ToolDocument(
+        id=f"{server_name}:{tool_name}",
+        server_name=server_name,
+        tool_name=tool_name,
+        description=schema.get("description", ""),
+        parameters=schema.get("inputSchema", {}),
+        vector=vector,
+    )

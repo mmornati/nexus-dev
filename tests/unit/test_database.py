@@ -4,7 +4,9 @@ from nexus_dev.database import (
     Document,
     DocumentType,
     SearchResult,
+    ToolDocument,
     generate_document_id,
+    tool_document_from_schema,
 )
 
 
@@ -173,3 +175,228 @@ class TestSearchResult:
         assert result.text == "Found text"
         assert result.score == 0.95
         assert result.doc_type == "code"
+
+
+class TestToolDocument:
+    """Test suite for ToolDocument dataclass."""
+
+    def test_tool_document_creation(self):
+        """Test creating a ToolDocument with all fields."""
+        doc = ToolDocument(
+            id="github:create_pull_request",
+            server_name="github",
+            tool_name="create_pull_request",
+            description="Create a new pull request",
+            parameters={"type": "object", "properties": {"title": {"type": "string"}}},
+            vector=[0.1, 0.2, 0.3],
+            examples=["Create PR for bug fix", "Open new feature PR"],
+        )
+
+        assert doc.id == "github:create_pull_request"
+        assert doc.server_name == "github"
+        assert doc.tool_name == "create_pull_request"
+        assert doc.description == "Create a new pull request"
+        assert doc.parameters["type"] == "object"
+        assert len(doc.vector) == 3
+        assert len(doc.examples) == 2
+        assert doc.timestamp is not None
+
+    def test_tool_document_default_examples(self):
+        """Test ToolDocument with default empty examples."""
+        doc = ToolDocument(
+            id="filesystem:read_file",
+            server_name="filesystem",
+            tool_name="read_file",
+            description="Read a file",
+            parameters={},
+            vector=[0.5, 0.6],
+        )
+
+        assert doc.examples == []
+
+    def test_tool_document_to_dict(self):
+        """Test converting ToolDocument to dictionary."""
+        doc = ToolDocument(
+            id="slack:send_message",
+            server_name="slack",
+            tool_name="send_message",
+            description="Send a message to Slack",
+            parameters={"type": "object", "required": ["channel", "text"]},
+            vector=[0.7, 0.8, 0.9],
+            examples=["Send notification"],
+        )
+
+        result = doc.to_dict()
+
+        assert result["id"] == "slack:send_message"
+        assert result["project_id"] == "mcp_tools"
+        assert result["file_path"] == "mcp://slack/send_message"
+        assert result["doc_type"] == "tool"
+        assert result["chunk_type"] == "tool"
+        assert result["language"] == "mcp"
+        assert result["name"] == "send_message"
+        assert result["start_line"] == 0
+        assert result["end_line"] == 0
+        assert result["server_name"] == "slack"
+        assert "timestamp" in result
+        assert result["vector"] == [0.7, 0.8, 0.9]
+
+        # Check parameters_schema is JSON string
+        import json
+
+        params = json.loads(result["parameters_schema"])
+        assert params["type"] == "object"
+        assert "channel" in params["required"]
+
+    def test_tool_document_get_searchable_text(self):
+        """Test get_searchable_text method."""
+        doc = ToolDocument(
+            id="database:query",
+            server_name="database",
+            tool_name="query",
+            description="Execute a database query",
+            parameters={},
+            vector=[0.1],
+        )
+
+        text = doc.get_searchable_text()
+
+        assert "MCP Tool: database.query" in text
+        assert "Description: Execute a database query" in text
+
+    def test_tool_document_get_searchable_text_with_examples(self):
+        """Test get_searchable_text with examples."""
+        doc = ToolDocument(
+            id="email:send",
+            server_name="email",
+            tool_name="send",
+            description="Send an email",
+            parameters={},
+            vector=[0.1],
+            examples=["Send welcome email", "Send notification"],
+        )
+
+        text = doc.get_searchable_text()
+
+        assert "MCP Tool: email.send" in text
+        assert "Description: Send an email" in text
+        assert "Examples: Send welcome email, Send notification" in text
+
+    def test_tool_document_text_in_to_dict(self):
+        """Test that to_dict uses get_searchable_text for text field."""
+        doc = ToolDocument(
+            id="test:tool",
+            server_name="test",
+            tool_name="tool",
+            description="Test tool",
+            parameters={},
+            vector=[0.1],
+            examples=["Example usage"],
+        )
+
+        result = doc.to_dict()
+        expected_text = doc.get_searchable_text()
+
+        assert result["text"] == expected_text
+        assert "MCP Tool: test.tool" in result["text"]
+        assert "Examples: Example usage" in result["text"]
+
+
+class TestToolDocumentFromSchema:
+    """Test suite for tool_document_from_schema helper function."""
+
+    def test_basic_schema_conversion(self):
+        """Test converting a basic MCP schema to ToolDocument."""
+        schema = {
+            "description": "List files in a directory",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+            },
+        }
+
+        doc = tool_document_from_schema(
+            server_name="filesystem",
+            tool_name="list_directory",
+            schema=schema,
+            vector=[0.1, 0.2, 0.3],
+        )
+
+        assert doc.id == "filesystem:list_directory"
+        assert doc.server_name == "filesystem"
+        assert doc.tool_name == "list_directory"
+        assert doc.description == "List files in a directory"
+        assert doc.parameters["type"] == "object"
+        assert doc.vector == [0.1, 0.2, 0.3]
+        assert doc.examples == []
+
+    def test_schema_without_description(self):
+        """Test schema without description field."""
+        schema = {
+            "inputSchema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+            }
+        }
+
+        doc = tool_document_from_schema(
+            server_name="search",
+            tool_name="search_code",
+            schema=schema,
+            vector=[0.5],
+        )
+
+        assert doc.description == ""
+        assert doc.parameters["type"] == "object"
+
+    def test_schema_without_input_schema(self):
+        """Test schema without inputSchema field."""
+        schema = {"description": "Simple tool"}
+
+        doc = tool_document_from_schema(
+            server_name="simple",
+            tool_name="do_something",
+            schema=schema,
+            vector=[0.1],
+        )
+
+        assert doc.description == "Simple tool"
+        assert doc.parameters == {}
+
+    def test_complex_schema(self):
+        """Test schema with complex parameter structure."""
+        schema = {
+            "description": "Create a GitHub issue",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "body": {"type": "string"},
+                    "labels": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["title"],
+            },
+        }
+
+        doc = tool_document_from_schema(
+            server_name="github",
+            tool_name="create_issue",
+            schema=schema,
+            vector=[0.8, 0.9],
+        )
+
+        assert doc.description == "Create a GitHub issue"
+        assert "title" in doc.parameters["properties"]
+        assert "labels" in doc.parameters["properties"]
+        assert doc.parameters["required"] == ["title"]
+
+    def test_id_format(self):
+        """Test that ID is formatted as server_name:tool_name."""
+        doc = tool_document_from_schema(
+            server_name="my-server",
+            tool_name="my-tool",
+            schema={},
+            vector=[0.1],
+        )
+
+        assert doc.id == "my-server:my-tool"
