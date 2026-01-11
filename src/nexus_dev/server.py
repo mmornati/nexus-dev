@@ -20,6 +20,7 @@ from .chunkers import ChunkerRegistry, CodeChunk
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import EmbeddingProvider, create_embedder
+from .mcp_config import MCPConfig
 
 # Initialize FastMCP server
 mcp = FastMCP("nexus-dev")
@@ -28,6 +29,7 @@ mcp = FastMCP("nexus-dev")
 _config: NexusConfig | None = None
 _embedder: EmbeddingProvider | None = None
 _database: NexusDatabase | None = None
+_mcp_config: MCPConfig | None = None
 
 
 def _get_config() -> NexusConfig | None:
@@ -44,6 +46,42 @@ def _get_config() -> NexusConfig | None:
             _config = NexusConfig.load(config_path)
         # Don't create default - None means "all projects"
     return _config
+
+
+def _get_mcp_config() -> MCPConfig | None:
+    """Get or load MCP configuration.
+
+    Returns None if no .nexus/mcp_config.json exists in cwd.
+    """
+    global _mcp_config
+    if _mcp_config is None:
+        config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+        if config_path.exists():
+            try:
+                _mcp_config = MCPConfig.load(config_path)
+            except Exception:
+                # Log error or handle as needed, but don't fail startup
+                pass
+    return _mcp_config
+
+
+def _get_active_server_names() -> list[str]:
+    """Get names of active MCP servers.
+
+    Returns:
+        List of active server names.
+    """
+    mcp_config = _get_mcp_config()
+    if not mcp_config:
+        return []
+
+    # Find the name for each active server config
+    active_servers = mcp_config.get_active_servers()
+    active_names = []
+    for name, config in mcp_config.servers.items():
+        if config in active_servers:
+            active_names.append(name)
+    return active_names
 
 
 def _get_embedder() -> EmbeddingProvider:
@@ -720,8 +758,9 @@ def main() -> None:
     try:
         _get_config()
         _get_database()
+        _get_mcp_config()
     except Exception:
-        pass  # Config may not exist yet, that's OK
+        pass  # Database or config may not be ready yet
 
     # Run server with stdio transport
     mcp.run(transport="stdio")

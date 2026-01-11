@@ -669,3 +669,63 @@ class TestSearchTools:
         lines = result.split("\n")
         params_count = sum(1 for line in lines if "**Parameters:**" in line)
         assert params_count == 0
+
+
+class TestMCPConfigLoading:
+    """Test suite for MCP configuration loading helpers."""
+
+    @patch("nexus_dev.server._mcp_config", None)
+    @patch("nexus_dev.server.MCPConfig")
+    @patch("nexus_dev.server.Path")
+    def test_get_mcp_config_loads_from_file(self, mock_path, mock_mcp_config):
+        """Test _get_mcp_config loads config when file exists."""
+        import nexus_dev.server as server
+        from nexus_dev.server import _get_mcp_config
+
+        server._mcp_config = None
+
+        mock_path_obj = MagicMock()
+        mock_path_obj.exists.return_value = True
+        mock_path.cwd.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_obj
+
+        mock_config_instance = MagicMock()
+        mock_mcp_config.load.return_value = mock_config_instance
+
+        config = _get_mcp_config()
+
+        assert config is mock_config_instance
+        mock_mcp_config.load.assert_called_once()
+
+    @patch("nexus_dev.server._mcp_config", None)
+    @patch("nexus_dev.server.Path")
+    def test_get_mcp_config_returns_none_if_not_exists(self, mock_path):
+        """Test _get_mcp_config returns None if file doesn't exist."""
+        import nexus_dev.server as server
+        from nexus_dev.server import _get_mcp_config
+
+        server._mcp_config = None
+
+        mock_path_obj = MagicMock()
+        mock_path_obj.exists.return_value = False
+        mock_path.cwd.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_obj
+
+        config = _get_mcp_config()
+
+        assert config is None
+
+    @patch("nexus_dev.server._get_mcp_config")
+    def test_get_active_server_names(self, mock_get_mcp_config):
+        """Test _get_active_server_names returns enabled server names."""
+        from nexus_dev.server import _get_active_server_names
+
+        mock_config = MagicMock()
+        mock_server1 = MagicMock()
+        mock_server2 = MagicMock()
+
+        mock_config.servers = {"server1": mock_server1, "server2": mock_server2}
+        mock_config.get_active_servers.return_value = [mock_server1]
+        mock_get_mcp_config.return_value = mock_config
+
+        active_names = _get_active_server_names()
+
+        assert active_names == ["server1"]
