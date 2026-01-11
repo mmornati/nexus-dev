@@ -462,8 +462,9 @@ class TestHelperFunctions:
     """Test suite for helper functions."""
 
     @patch("nexus_dev.server._config", None)
+    @patch("nexus_dev.server.NexusConfig")
     @patch("nexus_dev.server.Path")
-    def test_get_config_loads_from_file(self, mock_path):
+    def test_get_config_loads_from_file(self, mock_path, mock_nexus_config):
         """Test _get_config loads config when file exists."""
         # Reset global state
         import nexus_dev.server as server
@@ -472,13 +473,19 @@ class TestHelperFunctions:
         server._config = None
 
         mock_path_obj = MagicMock()
-        mock_path_obj.exists.return_value = False
+        mock_path_obj.exists.return_value = True
         mock_path.cwd.return_value.__truediv__.return_value = mock_path_obj
+
+        # Mock the config object returned by load
+        mock_config_instance = MagicMock()
+        mock_config_instance.project_id = "test-project"
+        mock_nexus_config.load.return_value = mock_config_instance
 
         config = _get_config()
 
         assert config is not None
         assert config.project_id is not None
+        mock_nexus_config.load.assert_called_once()
 
     @patch("nexus_dev.server._embedder", None)
     @patch("nexus_dev.server._get_config")
