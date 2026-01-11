@@ -30,6 +30,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+google = ["google-cloud-aiplatform>=1.38.0"]
+aws = ["boto3>=1.34.0"]
+voyage = ["voyageai>=0.1.0"]
+cohere = ["cohere>=4.37.0"]
+all = ["nexus-dev[google,aws,voyage,cohere]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.25.0",

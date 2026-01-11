@@ -28,9 +28,20 @@ class NexusConfig:
 
     project_id: str
     project_name: str
-    embedding_provider: Literal["openai", "ollama"] = "openai"
+    embedding_provider: Literal["openai", "ollama", "google", "aws", "voyage", "cohere"] = "openai"
     embedding_model: str = "text-embedding-3-small"
     ollama_url: str = "http://localhost:11434"
+    # Google Vertex AI configuration
+    google_project_id: str | None = None
+    google_location: str | None = None
+    # AWS Bedrock configuration
+    aws_region: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    # Voyage AI configuration
+    voyage_api_key: str | None = None
+    # Cohere configuration
+    cohere_api_key: str | None = None
     db_path: str = "~/.nexus-dev/db"
     include_patterns: list[str] = field(
         default_factory=lambda: ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
@@ -54,7 +65,9 @@ class NexusConfig:
     def create_new(
         cls,
         project_name: str,
-        embedding_provider: Literal["openai", "ollama"] = "openai",
+        embedding_provider: Literal[
+            "openai", "ollama", "google", "aws", "voyage", "cohere"
+        ] = "openai",
         embedding_model: str | None = None,
     ) -> NexusConfig:
         """Create a new configuration with a generated project ID.
@@ -72,6 +85,16 @@ class NexusConfig:
             embedding_model = (
                 "text-embedding-3-small" if embedding_provider == "openai" else "nomic-embed-text"
             )
+
+        # Set default models for other providers if not specified
+        if embedding_model is None:
+            defaults = {
+                "google": "text-embedding-004",
+                "aws": "amazon.titan-embed-text-v1",
+                "voyage": "voyage-large-2",
+                "cohere": "embed-multilingual-v3.0",
+            }
+            embedding_model = defaults.get(embedding_provider, embedding_model)
 
         return cls(
             project_id=str(uuid.uuid4()),
@@ -113,6 +136,13 @@ class NexusConfig:
             embedding_provider=data.get("embedding_provider", "openai"),
             embedding_model=data.get("embedding_model", "text-embedding-3-small"),
             ollama_url=data.get("ollama_url", "http://localhost:11434"),
+            google_project_id=data.get("google_project_id"),
+            google_location=data.get("google_location"),
+            aws_region=data.get("aws_region"),
+            aws_access_key_id=data.get("aws_access_key_id"),
+            aws_secret_access_key=data.get("aws_secret_access_key"),
+            voyage_api_key=data.get("voyage_api_key"),
+            cohere_api_key=data.get("cohere_api_key"),
             db_path=data.get("db_path", "~/.nexus-dev/db"),
             include_patterns=data.get(
                 "include_patterns", ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
@@ -158,6 +188,13 @@ class NexusConfig:
             "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
             "ollama_url": self.ollama_url,
+            "google_project_id": self.google_project_id,
+            "google_location": self.google_location,
+            "aws_region": self.aws_region,
+            "aws_access_key_id": self.aws_access_key_id,
+            "aws_secret_access_key": self.aws_secret_access_key,
+            "voyage_api_key": self.voyage_api_key,
+            "cohere_api_key": self.cohere_api_key,
             "db_path": self.db_path,
             "include_patterns": self.include_patterns,
             "exclude_patterns": self.exclude_patterns,
@@ -194,5 +231,22 @@ class NexusConfig:
             "nomic-embed-text": 768,
             "mxbai-embed-large": 1024,
             "all-minilm": 384,
+            # Google
+            "text-embedding-004": 768,
+            "text-multilingual-embedding-002": 768,
+            "textembedding-gecko@003": 768,
+            "textembedding-gecko-multilingual@001": 768,
+            # AWS Bedrock
+            "amazon.titan-embed-text-v1": 1536,
+            "amazon.titan-embed-text-v2:0": 1024,
+            # Voyage
+            "voyage-large-2": 1536,
+            "voyage-code-2": 1536,
+            "voyage-2": 1024,
+            # Cohere
+            "embed-english-v3.0": 1024,
+            "embed-multilingual-v3.0": 1024,
+            "embed-english-light-v3.0": 384,
+            "embed-multilingual-light-v3.0": 384,
         }
         return dimensions_map.get(self.embedding_model, 1536)
