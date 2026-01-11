@@ -1,0 +1,50 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Nexus-Dev MCP Configuration",
+    "type": "object",
+    "properties": {
+        "version": {
+            "type": "string",
+            "description": "Schema version",
+            "const": "1.0"
+        },
+        "servers": {
+            "type": "object",
+            "description": "MCP server configurations",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Command to start the MCP server"
+                    },
+                    "args": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "default": []
+                    },
+                    "env": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "default": {}
+                    }
+                },
+                "required": [
+                    "command"
+                ]
+            }
+        }
+    },
+    "required": [
+        "version",
+        "servers"
+    ]
+}
