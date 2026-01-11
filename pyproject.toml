@@ -50,6 +50,7 @@ nexus-reindex = "nexus_dev.cli:reindex_command"
 nexus-index-mcp = "nexus_dev.cli:index_mcp_command_entry"
 nexus-status = "nexus_dev.cli:status_command"
 nexus-dev = "nexus_dev.server:main"
+nexus-mcp = "nexus_dev.cli:mcp_command_entry"
 
 [project.urls]
 Homepage = "https://github.com/mmornati/nexus-dev"

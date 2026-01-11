@@ -618,3 +618,151 @@ class TestCliIndexMCP:
 
             # Cleanup
             mcp_config_path.unlink()
+
+
+class TestCliMCPInit:
+    """Test suite for nexus-mcp init command."""
+
+    def test_mcp_init_creates_empty_config(self, runner, tmp_path):
+        """Test mcp init creates an empty configuration."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["mcp", "init"])
+
+            assert result.exit_code == 0
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            assert config_path.exists()
+
+            # Verify config content
+            config = json.loads(config_path.read_text())
+            assert config["version"] == "1.0"
+            assert config["servers"] == {}
+            assert "Created" in result.output
+            assert "Configuration initialized successfully!" in result.output
+
+    def test_mcp_init_from_global_success(self, runner, tmp_path):
+        """Test mcp init --from-global imports servers from global config."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create global config
+            global_config_dir = Path.home() / ".config" / "mcp"
+            global_config_dir.mkdir(parents=True, exist_ok=True)
+            global_config_path = global_config_dir / "config.json"
+            global_config = {
+                "mcpServers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-github"],
+                        "env": {"GITHUB_TOKEN": "test"},
+                    },
+                    "filesystem": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                    },
+                }
+            }
+            global_config_path.write_text(json.dumps(global_config))
+
+            result = runner.invoke(cli, ["mcp", "init", "--from-global"])
+
+            assert result.exit_code == 0
+            assert "Imported 2 servers from global config" in result.output
+
+            # Verify created config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            assert config_path.exists()
+
+            config = json.loads(config_path.read_text())
+            assert config["version"] == "1.0"
+            assert "github" in config["servers"]
+            assert "filesystem" in config["servers"]
+            assert config["servers"]["github"]["command"] == "npx"
+            assert config["servers"]["github"]["args"] == [
+                "-y",
+                "@modelcontextprotocol/server-github",
+            ]
+            assert config["servers"]["github"]["env"] == {"GITHUB_TOKEN": "test"}
+            assert config["servers"]["github"]["enabled"] is True
+
+            # Cleanup
+            global_config_path.unlink()
+
+    def test_mcp_init_from_global_not_found(self, runner, tmp_path):
+        """Test mcp init --from-global when global config doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Ensure no global config exists
+            global_config_path = Path.home() / ".config" / "mcp" / "config.json"
+            if global_config_path.exists():
+                global_config_path.unlink()
+
+            result = runner.invoke(cli, ["mcp", "init", "--from-global"])
+
+            assert "Global config not found" in result.output
+            # Config should not be created
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            assert not config_path.exists()
+
+    def test_mcp_init_existing_config_abort(self, runner, tmp_path):
+        """Test mcp init aborts if config exists and user declines overwrite."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create existing config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {}}')
+
+            result = runner.invoke(
+                cli,
+                ["mcp", "init"],
+                input="n\n",  # Decline overwrite
+            )
+
+            assert "MCP config exists" in result.output
+            assert "Aborted" in result.output
+
+    def test_mcp_init_existing_config_overwrite(self, runner, tmp_path):
+        """Test mcp init overwrites config when user confirms."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create existing config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text('{"version": "1.0", "servers": {"old": {}}}')
+
+            result = runner.invoke(
+                cli,
+                ["mcp", "init"],
+                input="y\n",  # Confirm overwrite
+            )
+
+            assert result.exit_code == 0
+            assert "Created" in result.output
+
+            # Verify old server is gone
+            config = json.loads(config_path.read_text())
+            assert "old" not in config["servers"]
+            assert config["servers"] == {}
+
+    def test_mcp_init_creates_nexus_directory(self, runner, tmp_path):
+        """Test mcp init creates .nexus directory if it doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            nexus_dir = Path.cwd() / ".nexus"
+            assert not nexus_dir.exists()
+
+            result = runner.invoke(cli, ["mcp", "init"])
+
+            assert result.exit_code == 0
+            assert nexus_dir.exists()
+            assert nexus_dir.is_dir()
+
+    def test_mcp_init_from_global_invalid_json(self, runner, tmp_path):
+        """Test mcp init --from-global handles invalid JSON gracefully."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create global config with invalid JSON
+            global_config_dir = Path.home() / ".config" / "mcp"
+            global_config_dir.mkdir(parents=True, exist_ok=True)
+            global_config_path = global_config_dir / "config.json"
+            global_config_path.write_text("{invalid json}")
+
+            result = runner.invoke(cli, ["mcp", "init", "--from-global"])
+
+            assert "Invalid JSON in global config" in result.output
+
+            # Cleanup
+            global_config_path.unlink()
