@@ -20,6 +20,7 @@ from .chunkers import ChunkerRegistry, CodeChunk
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import EmbeddingProvider, create_embedder
+from .gateway.connection_manager import ConnectionManager
 from .mcp_config import MCPConfig
 
 # Initialize FastMCP server
@@ -30,6 +31,7 @@ _config: NexusConfig | None = None
 _embedder: EmbeddingProvider | None = None
 _database: NexusDatabase | None = None
 _mcp_config: MCPConfig | None = None
+_connection_manager: ConnectionManager | None = None
 
 
 def _get_config() -> NexusConfig | None:
@@ -82,6 +84,18 @@ def _get_active_server_names() -> list[str]:
         if config in active_servers:
             active_names.append(name)
     return active_names
+
+
+def _get_connection_manager() -> ConnectionManager:
+    """Get or create connection manager singleton.
+
+    Returns:
+        ConnectionManager instance for managing MCP server connections.
+    """
+    global _connection_manager
+    if _connection_manager is None:
+        _connection_manager = ConnectionManager()
+    return _connection_manager
 
 
 def _get_embedder() -> EmbeddingProvider:
@@ -515,6 +529,58 @@ async def list_servers() -> str:
         output.append("*No disabled servers*")
 
     return "\n".join(output)
+
+
+@mcp.tool()
+async def get_tool_schema(server: str, tool: str) -> str:
+    """Get the full JSON schema for a specific MCP tool.
+
+    Use this after search_tools to get complete parameter details
+    before calling invoke_tool.
+
+    Args:
+        server: Server name (e.g., "github")
+        tool: Tool name (e.g., "create_pull_request")
+
+    Returns:
+        Full JSON schema with parameter types and descriptions.
+    """
+    mcp_config = _get_mcp_config()
+    if not mcp_config:
+        return "No MCP config. Run 'nexus-mcp init' first."
+
+    if server not in mcp_config.servers:
+        available = ", ".join(sorted(mcp_config.servers.keys()))
+        return f"Server not found: {server}. Available: {available}"
+
+    server_config = mcp_config.servers[server]
+    if not server_config.enabled:
+        return f"Server is disabled: {server}"
+
+    conn_manager = _get_connection_manager()
+
+    try:
+        session = await conn_manager.get_connection(server, server_config)
+        tools_result = await session.list_tools()
+
+        for t in tools_result.tools:
+            if t.name == tool:
+                return json.dumps(
+                    {
+                        "server": server,
+                        "tool": tool,
+                        "description": t.description or "",
+                        "parameters": t.inputSchema or {},
+                    },
+                    indent=2,
+                )
+
+        available_tools = [t.name for t in tools_result.tools[:10]]
+        hint = f" Available: {', '.join(available_tools)}..." if available_tools else ""
+        return f"Tool not found: {server}.{tool}.{hint}"
+
+    except Exception as e:
+        return f"Error connecting to {server}: {e}"
 
 
 @mcp.tool()
