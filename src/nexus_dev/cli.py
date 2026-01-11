@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import stat
+from collections import defaultdict
 from collections.abc import Coroutine
 from fnmatch import fnmatch
 from pathlib import Path
@@ -238,10 +240,67 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
             files_to_index.append(path)
         elif path.is_dir():
             if recursive:
-                # Recursively find files
-                for file_path in path.rglob("*"):
-                    if file_path.is_file() and _should_index(file_path, config):
-                        files_to_index.append(file_path)
+                # Recursively find files using os.walk to prune ignored directories
+                for root, dirs, files in os.walk(path):
+                    root_path = Path(root)
+
+                    # Compute relative path for pattern matching
+                    rel_root = str(root_path.relative_to(Path.cwd()))
+                    if rel_root == ".":
+                        rel_root = ""
+
+                    # Filter directories to prevent traversal into ignored paths
+                    # We must modify dirs in-place to prune the walk
+                    i = 0
+                    while i < len(dirs):
+                        d = dirs[i]
+                        d_path = root_path / d
+                        # We construct a mock path string for the directory check
+                        # (relative path + directory name)
+                        check_path = str(d_path.relative_to(Path.cwd()))
+
+                        # Use a simpler check: if the directory ITSELF matches exclude pattern
+                        # we should remove it.
+                        should_exclude = False
+
+                        # Check excludes for this directory
+                        # We treat the directory string as match target for exclude patterns
+                        # excluding the trailing slash for fnmatch
+                        for pattern in config.exclude_patterns:
+                            # Normalize pattern: remove trailing slash for directory matching
+                            clean_pat = pattern.rstrip("/")
+                            if clean_pat.endswith("/**"):
+                                clean_pat = clean_pat[:-3]
+
+                            # Simple fnmatch on the logic
+                            if fnmatch(check_path, pattern) or fnmatch(check_path, clean_pat):
+                                should_exclude = True
+                                break
+
+                            # Handle recursive wildcard start (e.g. **/node_modules)
+                            if clean_pat.startswith("**/"):
+                                suffix = clean_pat[3:]
+                                if (
+                                    check_path == suffix
+                                    or check_path.endswith("/" + suffix)
+                                    or fnmatch(check_path, suffix)
+                                ):
+                                    should_exclude = True
+                                    break
+
+                        if should_exclude:
+                            if not quiet:
+                                # Optional: debug output if needed, but keeping it clean for now
+                                pass
+                            del dirs[i]
+                        else:
+                            i += 1
+
+                    # Add files
+                    for file in files:
+                        file_path = root_path / file
+                        if _should_index(file_path, config):
+                            files_to_index.append(file_path)
             else:
                 # Only immediate children
                 for file_path in path.iterdir():
@@ -254,7 +313,10 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
         return
 
     if not quiet:
-        click.echo(f"📁 Indexing {len(files_to_index)} file(s)...")
+        _print_file_summary(files_to_index)
+        if not click.confirm("Proceed with indexing?"):
+            click.echo("Aborted.")
+            return
 
     # Index files
     total_chunks = 0
@@ -369,6 +431,30 @@ def _should_index(file_path: Path, config: NexusConfig) -> bool:
     return False
 
 
+def _print_file_summary(files: list[Path]) -> None:
+    """Print a summary of files to be indexed."""
+    if not files:
+        click.echo("No files to index.")
+        return
+
+    # Group by directory
+    by_dir: dict[str, int] = defaultdict(int)
+    for f in files:
+        parent = str(f.parent.relative_to(Path.cwd()) if f.is_absolute() else f.parent)
+        if parent == ".":
+            parent = "Root"
+        by_dir[parent] += 1
+
+    click.echo(f"  Found {len(files)} files to index:")
+    click.echo("")
+
+    # Sort by directory name
+    for directory, count in sorted(by_dir.items()):
+        click.echo(f"  📁 {directory:<40} {count} files")
+
+    click.echo("")
+
+
 @cli.command("index-lesson")
 @click.argument("lesson_file")
 @click.option("-q", "--quiet", is_flag=True, help="Suppress output")
@@ -471,7 +557,6 @@ def status_command() -> None:
 
 
 @cli.command("reindex")
-@click.confirmation_option(prompt="This will delete and rebuild the entire index. Continue?")
 def reindex_command() -> None:
     """Re-index entire project (clear and rebuild)."""
     config_path = Path.cwd() / "nexus_config.json"
@@ -481,22 +566,10 @@ def reindex_command() -> None:
         return
 
     config = NexusConfig.load(config_path)
-    embedder = create_embedder(config)
-    database = NexusDatabase(config, embedder)
-    database.connect()
 
-    click.echo("🗑️  Clearing existing index...")
-    click.echo("🗑️  Clearing existing index...")
-    # Reset database to handle schema changes
-    database.reset()
-    # Re-connect to create new table with updated schema
-    database.connect()
-    click.echo("   Index cleared and schema updated")
+    # Collect files first to show summary
+    click.echo("🔍 Scanning files...")
 
-    click.echo("")
-    click.echo("📁 Re-indexing project...")
-
-    # Index based on include patterns
     cwd = Path.cwd()
     files_to_index: list[Path] = []
 
@@ -511,14 +584,36 @@ def reindex_command() -> None:
         if docs_path.is_file():
             files_to_index.append(docs_path)
         elif docs_path.is_dir():
-            for file_path in docs_path.rglob("*"):
-                if file_path.is_file():
-                    files_to_index.append(file_path)
+            for root, _, files in os.walk(docs_path):
+                # Apply same pruning logic for docs if needed, though usually docs are safer
+                # For consistency let's just collect files
+                for file in files:
+                    files_to_index.append(Path(root) / file)
 
     # Remove duplicates
     files_to_index = list(set(files_to_index))
 
-    click.echo(f"   Found {len(files_to_index)} files to index")
+    # Show summary and ask for confirmation
+    _print_file_summary(files_to_index)
+
+    if not click.confirm("This will CLEAR the database and re-index the above files. Continue?"):
+        click.echo("Aborted.")
+        return
+
+    # Proceed with DB operations
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    click.echo("🗑️  Clearing existing index...")
+    # Reset database to handle schema changes
+    database.reset()
+    # Re-connect to create new table with updated schema
+    database.connect()
+    click.echo("   Index cleared and schema updated")
+
+    click.echo("")
+    click.echo("📁 Re-indexing project...")
 
     # Index all files
     total_chunks = 0
@@ -538,6 +633,7 @@ def reindex_command() -> None:
                     _index_chunks_sync(chunks, config.project_id, doc_type, embedder, database)
                 )
                 total_chunks += count
+                click.echo(f"  ✅ {file_path.name}: {count} chunks")
 
         except Exception as e:
             click.echo(f"  ❌ Failed to index {file_path.name}: {e!s}", err=True)

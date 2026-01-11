@@ -55,6 +55,7 @@ class NexusConfig:
             "**/dist/**",
             "**/build/**",
             "**/.git/**",
+            "**/.next/**",
         ]
     )
     docs_folders: list[str] = field(
