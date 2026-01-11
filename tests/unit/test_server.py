@@ -1232,7 +1232,7 @@ class TestInvokeTool:
     @pytest.mark.asyncio
     @patch("nexus_dev.server._get_connection_manager")
     @patch("nexus_dev.server._get_mcp_config")
-    async def test_invoke_tool_handles_connection_error(
+    async def test_invoke_tool_handles_mcp_connection_error(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool handles MCPConnectionError specifically."""
