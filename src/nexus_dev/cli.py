@@ -721,7 +721,7 @@ def mcp_init_command(from_global: bool) -> None:
         mcp_config = MCPConfig(
             version="1.0",
             servers={},
-            profiles={},
+            profiles={"default": []},
         )
 
     mcp_config.save(config_path)
@@ -880,6 +880,11 @@ def mcp_profile_command(
         if server not in mcp_config.profiles[name]:
             mcp_config.profiles[name].append(server)
             click.echo(f"Added {server} to {name}")
+            # Warn if server not defined yet
+            if server not in mcp_config.servers:
+                click.echo(f"  ⚠️  Server '{server}' not defined. Add it with 'nexus-mcp add'")
+        else:
+            click.echo(f"Server {server} already in {name}")
 
     # Remove servers
     for server in remove:

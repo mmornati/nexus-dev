@@ -1370,10 +1370,36 @@ class TestCliMCPProfile:
             assert result.exit_code == 0
             # Should not add duplicate
             assert "Added github to default" not in result.output
+            assert "Server github already in default" in result.output
 
             # Verify no duplicate
             updated_config = json.loads(config_path.read_text())
             assert updated_config["profiles"]["default"].count("github") == 1
+
+    def test_mcp_profile_add_nonexistent_server_warning(self, runner, tmp_path):
+        """Test adding a server that doesn't exist yet shows warning."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config without the server defined
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "default", "--add", "nonexistent"])
+
+            assert result.exit_code == 0
+            assert "Added nonexistent to default" in result.output
+            assert "⚠️  Server 'nonexistent' not defined" in result.output
+            assert "Add it with 'nexus-mcp add'" in result.output
+
+            # Verify server was still added to profile
+            updated_config = json.loads(config_path.read_text())
+            assert "nonexistent" in updated_config["profiles"]["default"]
 
     def test_mcp_profile_remove_server(self, runner, tmp_path):
         """Test removing a server from a profile."""
