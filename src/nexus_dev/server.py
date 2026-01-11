@@ -480,6 +480,44 @@ async def search_tools(
 
 
 @mcp.tool()
+async def list_servers() -> str:
+    """List all configured MCP servers and their status.
+
+    Returns:
+        List of MCP servers with connection status.
+    """
+    mcp_config = _get_mcp_config()
+    if not mcp_config:
+        return "No MCP config. Run 'nexus-mcp init' first."
+
+    output = ["## MCP Servers", ""]
+
+    active = mcp_config.get_active_servers()
+    active_names = {name for name, cfg in mcp_config.servers.items() if cfg in active}
+
+    output.append("### Active")
+    if active_names:
+        for name in sorted(active_names):
+            server = mcp_config.servers[name]
+            output.append(f"- **{name}**: `{server.command}`")
+    else:
+        output.append("*No active servers*")
+
+    output.append("")
+    output.append("### Disabled")
+    disabled = [name for name, server in mcp_config.servers.items() if name not in active_names]
+    if disabled:
+        for name in sorted(disabled):
+            server = mcp_config.servers[name]
+            status = "disabled" if not server.enabled else "not in profile"
+            output.append(f"- {name} ({status})")
+    else:
+        output.append("*No disabled servers*")
+
+    return "\n".join(output)
+
+
+@mcp.tool()
 async def index_file(
     file_path: str,
     content: str | None = None,
