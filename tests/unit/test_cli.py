@@ -266,6 +266,22 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
+    def test_index_mcp_invalid_json(self, runner, tmp_path):
+        """Test index-mcp fails gracefully with invalid JSON in config."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create invalid MCP config
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config_path.write_text("{invalid json}")
+
+            result = runner.invoke(cli, ["index-mcp", "--all"])
+
+            assert "Invalid JSON in MCP config" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()
+
     @patch("nexus_dev.cli.create_embedder")
     @patch("nexus_dev.cli.NexusDatabase")
     @patch("nexus_dev.cli.NexusConfig")

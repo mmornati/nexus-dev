@@ -538,7 +538,7 @@ def reindex_command() -> None:
 
 
 @cli.command("index-mcp")
-@click.option("--server", "-s", help="Server name to index (from mcp_config.json)")
+@click.option("--server", "-s", help="Server name to index (from MCP config)")
 @click.option(
     "--config",
     "-c",
@@ -564,7 +564,11 @@ def index_mcp_command(server: str | None, config: str | None, index_all: bool) -
         click.echo("Specify --config or create ~/.config/mcp/config.json")
         return
 
-    mcp_config = json.loads(config_path.read_text())
+    try:
+        mcp_config = json.loads(config_path.read_text())
+    except json.JSONDecodeError as e:
+        click.echo(f"❌ Invalid JSON in MCP config: {e}", err=True)
+        return
 
     # Determine which servers to index
     servers_to_index = []
@@ -622,7 +626,7 @@ async def _index_mcp_servers(mcp_config: dict[str, Any], server_names: list[str]
                     id=f"{name}:{tool.name}",
                     text=text,
                     vector=vector,
-                    project_id="mcp_tools",
+                    project_id=f"{config.project_id}_mcp_tools",
                     file_path=f"mcp://{name}/{tool.name}",
                     doc_type=DocumentType.TOOL,
                     chunk_type="tool",
