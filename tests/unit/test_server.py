@@ -1537,7 +1537,7 @@ class TestGetActiveToolsResource:
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource only shows tools from active servers.
-        
+
         This test verifies that when multiple servers' tools exist in the database,
         only tools from servers in the active profile are returned.
         """
