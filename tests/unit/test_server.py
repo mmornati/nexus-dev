@@ -884,3 +884,152 @@ class TestMain:
 
         mock_get_config.assert_called_once()
         mock_mcp.run.assert_called_once_with(transport="stdio")
+
+
+class TestGetToolSchema:
+    """Test suite for get_tool_schema tool."""
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_no_config(self, mock_get_mcp_config):
+        """Test get_tool_schema returns message when no config exists."""
+        from nexus_dev.server import get_tool_schema
+
+        mock_get_mcp_config.return_value = None
+
+        result = await get_tool_schema("github", "create_issue")
+
+        assert "No MCP config" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_server_not_found(self, mock_get_mcp_config):
+        """Test get_tool_schema returns error for missing server."""
+        from nexus_dev.server import get_tool_schema
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": MagicMock()}
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await get_tool_schema("unknown", "some_tool")
+
+        assert "Server not found" in result
+        assert "unknown" in result
+        assert "Available" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_server_disabled(self, mock_get_mcp_config):
+        """Test get_tool_schema returns error for disabled server."""
+        from nexus_dev.server import get_tool_schema
+
+        mock_server = MagicMock()
+        mock_server.enabled = False
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        result = await get_tool_schema("github", "create_issue")
+
+        assert "Server is disabled" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_success(self, mock_get_mcp_config, mock_get_conn_manager):
+        """Test get_tool_schema returns valid schema."""
+        import json
+
+        from nexus_dev.server import get_tool_schema
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        # Mock tool result
+        mock_tool = MagicMock()
+        mock_tool.name = "create_issue"
+        mock_tool.description = "Create a GitHub issue"
+        mock_tool.inputSchema = {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+        }
+
+        mock_session = AsyncMock()
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = [mock_tool]
+        mock_session.list_tools.return_value = mock_tools_result
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.get_connection = AsyncMock(return_value=mock_session)
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await get_tool_schema("github", "create_issue")
+
+        parsed = json.loads(result)
+        assert parsed["server"] == "github"
+        assert parsed["tool"] == "create_issue"
+        assert parsed["description"] == "Create a GitHub issue"
+        assert "properties" in parsed["parameters"]
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_tool_not_found(self, mock_get_mcp_config, mock_get_conn_manager):
+        """Test get_tool_schema returns error for missing tool."""
+        from nexus_dev.server import get_tool_schema
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        # Mock tool result with different tools
+        mock_tool = MagicMock()
+        mock_tool.name = "other_tool"
+
+        mock_session = AsyncMock()
+        mock_tools_result = MagicMock()
+        mock_tools_result.tools = [mock_tool]
+        mock_session.list_tools.return_value = mock_tools_result
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.get_connection = AsyncMock(return_value=mock_session)
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await get_tool_schema("github", "nonexistent")
+
+        assert "Tool not found" in result
+        assert "github.nonexistent" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_connection_manager")
+    @patch("nexus_dev.server._get_mcp_config")
+    async def test_get_tool_schema_connection_error(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
+        """Test get_tool_schema handles connection errors."""
+        from nexus_dev.server import get_tool_schema
+
+        mock_server = MagicMock()
+        mock_server.enabled = True
+
+        mock_config = MagicMock()
+        mock_config.servers = {"github": mock_server}
+        mock_get_mcp_config.return_value = mock_config
+
+        mock_conn_manager = MagicMock()
+        mock_conn_manager.get_connection = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_get_conn_manager.return_value = mock_conn_manager
+
+        result = await get_tool_schema("github", "create_issue")
+
+        assert "Error connecting" in result
+        assert "github" in result
+        assert "Connection refused" in result
