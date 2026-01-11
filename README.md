@@ -121,6 +121,51 @@ Nexus-Dev exposes 7 tools to AI agents:
 | `record_lesson` | Store a problem/solution pair for future reference |
 | `get_project_context` | Get project statistics and recent lessons |
 
+## MCP Gateway Mode
+
+Nexus-Dev can act as a gateway to other MCP servers, reducing tool count for AI agents.
+
+### Setup
+
+1. Initialize MCP configuration:
+   ```bash
+   nexus-mcp init --from-global
+   ```
+
+2. Index tools from configured servers:
+   ```bash
+   nexus-index-mcp --all
+   ```
+
+### Usage
+
+Instead of configuring 10 MCP servers (50+ tools), configure only Nexus-Dev:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dev": {
+      "command": "nexus-dev"
+    }
+  }
+}
+```
+
+AI uses these Nexus-Dev tools to access other servers:
+
+| Tool | Description |
+|------|-------------|
+| `search_tools` | Find the right tool for a task |
+| `invoke_tool` | Execute a tool on any configured server |
+| `list_servers` | Show available MCP servers |
+
+### Workflow
+
+1. AI searches: `search_tools("create GitHub issue")`
+2. Nexus-Dev returns: `github.create_issue` with schema
+3. AI invokes: `invoke_tool("github", "create_issue", {...})`
+4. Nexus-Dev proxies to GitHub MCP
+
 ## Configuration
 
 `nexus_config.json` example:
@@ -279,40 +324,34 @@ flowchart TB
         Cursor["Cursor / Copilot / Windsurf"]
     end
 
-    subgraph MCP["📡 Nexus-Dev MCP Server"]
+    subgraph MCP["📡 Nexus-Dev (Gateway)"]
         direction TB
         
         subgraph Tools["MCP Tools"]
+            direction TB
             search_knowledge["search_knowledge"]
             search_code["search_code"]
             search_docs["search_docs"]
-            search_lessons["search_lessons"]
             index_file["index_file"]
-            record_lesson["record_lesson"]
+            gateway_tools["gateway_tools (new)"]
         end
         
-        subgraph Chunkers["🔧 Chunker Registry"]
-            Python["Python"]
-            JavaScript["JavaScript/TypeScript"]
-            Java["Java"]
-            Docs["Documentation"]
+        subgraph Chunkers["🔧 RAG Pipeline"]
+            Python["Chunkers"]
+            Embeddings["Embeddings"]
+            DB["LanceDB"]
         end
-        
-        subgraph Embeddings["🧮 Embedding Layer"]
-            OpenAI["OpenAI API"]
-            Ollama["Ollama (Local)"]
-        end
-        
-        subgraph DB["💾 LanceDB"]
-            Vectors["Vector Storage"]
-            Metadata["Metadata Index"]
-        end
+    end
+
+    subgraph External["🌍 External MCP Servers"]
+        GH["GitHub"]
+        PG["PostgreSQL"]
+        Other["..."]
     end
 
     Agent -->|"stdio"| Tools
     Tools --> Chunkers
-    Chunkers --> Embeddings
-    Embeddings --> DB
+    gateway_tools -.->|"invoke_tool"| External
 ```
 
 ### Data Flow
