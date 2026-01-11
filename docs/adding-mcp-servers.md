@@ -19,6 +19,61 @@ This guide explains how to configure additional MCP servers for use with Nexus-D
    nexus-index-mcp --server my-server
    ```
 
+## Gateway Architecture
+
+Nexus-Dev operates as a **Gateway** for all your MCP tools. This means you **do not** need to configure every individual MCP server in your IDE (Cursor, Windsurf, Claude Desktop, etc.).
+
+**You only need to configure Nexus-Dev once.**
+
+### Request Flow
+
+When your AI agent requests a tool (e.g., "create_issue"), the request follows this path:
+
+```mermaid
+sequenceDiagram
+    participant IDE as AI Agent (IDE)
+    participant Nexus as Nexus-Dev (Gateway)
+    participant GH as GitHub MCP
+    participant DB as Postgres MCP
+
+    Note over IDE,Nexus: 1. Single Connection
+    IDE->>Nexus: Call Tool: github_create_issue
+    
+    Note over Nexus: 2. Routing
+    Nexus->>Nexus: Identify Target Server
+    
+    Note over Nexus,GH: 3. Proxy Execution
+    Nexus->>GH: Forward Request
+    GH-->>Nexus: Result
+    
+    Nexus-->>IDE: Final Response
+```
+
+### Configuration Simplification
+
+| Traditional Setup | Nexus-Dev Gateway Setup |
+|-------------------|-------------------------|
+| **IDE Config**: List *every* server (GitHub, Postgres, Filesystem...) | **IDE Config**: List *only* Nexus-Dev |
+| **Complexity**: O(N) connections | **Complexity**: 1 connection |
+| **Management**: Restart IDE to add servers | **Management**: `nexus-mcp add` (Dynamic) |
+
+### IDE Configuration
+
+Your IDE configuration (e.g., `claude_desktop_config.json`) remains clean:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dev": {
+      "command": "nexus-dev",
+      "args": []
+    }
+  }
+}
+```
+
+All other servers are managed internally by Nexus-Dev via `.nexus/mcp_config.json`.
+
 ## Configuration Format
 
 The `.nexus/mcp_config.json` file:
