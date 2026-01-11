@@ -20,6 +20,8 @@ def make_search_result(
     name="foo",
     start_line=1,
     end_line=10,
+    server_name="",
+    parameters_schema="",
 ):
     """Create a mock SearchResult."""
     return SearchResult(
@@ -34,6 +36,8 @@ def make_search_result(
         name=name,
         start_line=start_line,
         end_line=end_line,
+        server_name=server_name,
+        parameters_schema=parameters_schema,
     )
 
 
@@ -508,3 +512,160 @@ class TestHelperFunctions:
 
         assert embedder1 is embedder2
         mock_create.assert_called_once()
+
+
+class TestSearchTools:
+    """Test suite for search_tools tool."""
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    async def test_search_tools_returns_results(self, mock_get_db):
+        """Test search_tools returns formatted tool results."""
+        from nexus_dev.server import search_tools
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="create_pull_request",
+                    server_name="github",
+                    text="Create a new pull request in a GitHub repository.",
+                    parameters_schema=(
+                        '{"type": "object", "properties": {"owner": {"type": "string"}}}'
+                    ),
+                )
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await search_tools("create a pull request")
+
+        assert "MCP Tools matching" in result
+        assert "github.create_pull_request" in result
+        assert "Create a new pull request" in result
+        assert "Parameters:" in result
+        assert '"owner"' in result
+        # Verify it searched only tools
+        call_args = mock_db.search.call_args
+        assert call_args.kwargs["doc_type"] == DocumentType.TOOL
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    async def test_search_tools_no_results(self, mock_get_db):
+        """Test search_tools with no results."""
+        from nexus_dev.server import search_tools
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(return_value=[])
+        mock_get_db.return_value = mock_db
+
+        result = await search_tools("nonexistent tool")
+
+        assert "No tools found matching" in result
+        assert "nonexistent tool" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    async def test_search_tools_filters_by_server(self, mock_get_db):
+        """Test search_tools filters results by server name."""
+        from nexus_dev.server import search_tools
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="create_issue",
+                    server_name="github",
+                    text="Create a GitHub issue",
+                    parameters_schema='{"type": "object"}',
+                ),
+                make_search_result(
+                    doc_type="tool",
+                    name="send_notification",
+                    server_name="homeassistant",
+                    text="Send a notification",
+                    parameters_schema='{"type": "object"}',
+                ),
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await search_tools("create something", server="github")
+
+        # Only github tool should be in results
+        assert "github.create_issue" in result
+        assert "homeassistant.send_notification" not in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    async def test_search_tools_no_results_with_server_filter(self, mock_get_db):
+        """Test search_tools with no results after server filtering."""
+        from nexus_dev.server import search_tools
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="send_notification",
+                    server_name="homeassistant",
+                    text="Send a notification",
+                    parameters_schema='{"type": "object"}',
+                )
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await search_tools("send notification", server="github")
+
+        assert "No tools found matching" in result
+        assert "github" in result
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    async def test_search_tools_clamps_limit(self, mock_get_db):
+        """Test that limit is clamped to 1-10."""
+        from nexus_dev.server import search_tools
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(return_value=[])
+        mock_get_db.return_value = mock_db
+
+        # Test too high
+        await search_tools("test", limit=100)
+        assert mock_db.search.call_args.kwargs["limit"] == 10
+
+        # Test too low
+        await search_tools("test", limit=0)
+        assert mock_db.search.call_args.kwargs["limit"] == 1
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_database")
+    async def test_search_tools_without_parameters(self, mock_get_db):
+        """Test search_tools formats results without parameters schema."""
+        from nexus_dev.server import search_tools
+
+        mock_db = MagicMock()
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(
+                    doc_type="tool",
+                    name="simple_tool",
+                    server_name="test",
+                    text="A simple tool without parameters",
+                    parameters_schema="",
+                )
+            ]
+        )
+        mock_get_db.return_value = mock_db
+
+        result = await search_tools("simple tool")
+
+        assert "test.simple_tool" in result
+        assert "A simple tool without parameters" in result
+        # Should not have Parameters section if schema is empty
+        lines = result.split("\n")
+        params_count = sum(1 for line in lines if "**Parameters:**" in line)
+        assert params_count == 0

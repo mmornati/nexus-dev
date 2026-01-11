@@ -151,6 +151,8 @@ class SearchResult:
         name: Name of the code element.
         start_line: Starting line number.
         end_line: Ending line number.
+        server_name: For TOOL type: MCP server name.
+        parameters_schema: For TOOL type: JSON schema string.
     """
 
     id: str
@@ -164,6 +166,8 @@ class SearchResult:
     name: str
     start_line: int
     end_line: int
+    server_name: str = ""
+    parameters_schema: str = ""
 
 
 class NexusDatabase:
@@ -338,6 +342,8 @@ class NexusDatabase:
                     name=row["name"],
                     start_line=row["start_line"],
                     end_line=row["end_line"],
+                    server_name=row.get("server_name", ""),
+                    parameters_schema=row.get("parameters_schema", ""),
                 )
             )
 
@@ -463,8 +469,11 @@ class NexusDatabase:
                         name=row["name"],
                         start_line=row["start_line"],
                         end_line=row["end_line"],
+                        server_name=row.get("server_name", ""),
+                        parameters_schema=row.get("parameters_schema", ""),
                     )
                 )
+            return results
             return results
         except Exception:
             return []

@@ -21,6 +21,10 @@ class MockRow:
     def __getitem__(self, key):
         return self._data[key]
 
+    def get(self, key, default=None):
+        """Get value with default fallback."""
+        return self._data.get(key, default)
+
 
 def create_mock_dataframe(data):
     """Create a mock object that behaves like a pandas DataFrame."""

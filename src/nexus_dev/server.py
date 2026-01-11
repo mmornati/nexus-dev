@@ -9,6 +9,7 @@ This module implements the MCP server using FastMCP, exposing tools for:
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -377,6 +378,67 @@ async def search_code(
 
     except Exception as e:
         return f"Code search failed: {e!s}"
+
+
+@mcp.tool()
+async def search_tools(
+    query: str,
+    server: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search for MCP tools matching a description.
+
+    Use this tool to find other MCP tools when you need to perform an action
+    but don't know which tool to use. Returns tool names, descriptions, and
+    parameter schemas.
+
+    Args:
+        query: Natural language description of what you want to do.
+               Examples: "create a GitHub issue", "list files in directory",
+               "send a notification to Home Assistant"
+        server: Optional server name to filter results (e.g., "github").
+        limit: Maximum results to return (default: 5, max: 10).
+
+    Returns:
+        Matching tools with server, name, description, and parameters.
+    """
+    database = _get_database()
+    limit = min(max(1, limit), 10)
+
+    # Search for tools
+    results = await database.search(
+        query=query,
+        doc_type=DocumentType.TOOL,
+        limit=limit,
+    )
+
+    # Filter by server if specified
+    if server and results:
+        results = [r for r in results if r.server_name == server]
+
+    if not results:
+        if server:
+            return f"No tools found matching: '{query}' in server: '{server}'"
+        return f"No tools found matching: '{query}'"
+
+    # Format output
+    output_parts = [f"## MCP Tools matching: '{query}'", ""]
+
+    for i, result in enumerate(results, 1):
+        # Parse parameters schema from stored JSON
+        params = json.loads(result.parameters_schema) if result.parameters_schema else {}
+
+        output_parts.append(f"### {i}. {result.server_name}.{result.name}")
+        output_parts.append(f"**Description:** {result.text}")
+        output_parts.append("")
+        if params:
+            output_parts.append("**Parameters:**")
+            output_parts.append("```json")
+            output_parts.append(json.dumps(params, indent=2))
+            output_parts.append("```")
+        output_parts.append("")
+
+    return "\n".join(output_parts)
 
 
 @mcp.tool()
