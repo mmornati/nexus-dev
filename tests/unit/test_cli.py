@@ -1,5 +1,6 @@
 """Tests for CLI commands with Click's CliRunner."""
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -237,3 +238,317 @@ class TestCliVersion:
         result = runner.invoke(cli, ["--version"])
 
         assert "0.1.0" in result.output
+
+
+class TestCliIndexMCP:
+    """Test suite for nexus-index-mcp command."""
+
+    def test_index_mcp_no_mcp_config(self, runner, tmp_path):
+        """Test index-mcp fails when MCP config is not found."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["index-mcp", "--all"])
+
+            assert "MCP config not found" in result.output
+
+    def test_index_mcp_missing_options(self, runner, tmp_path):
+        """Test index-mcp fails when neither --server nor --all is specified."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create MCP config
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config_path.write_text('{"mcpServers": {}}')
+
+            result = runner.invoke(cli, ["index-mcp"])
+
+            assert "Specify --server or --all" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()
+
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_single_server_success(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test indexing a single server successfully."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create MCP config
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config = {
+                "mcpServers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-github"],
+                        "env": {"GITHUB_TOKEN": "test"},
+                    }
+                }
+            }
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            # Mock embedder
+            mock_embedder = MagicMock()
+            mock_embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+            mock_embedder_fn.return_value = mock_embedder
+
+            # Mock database
+            mock_db = MagicMock()
+            mock_db.upsert_document = AsyncMock()
+            mock_db_cls.return_value = mock_db
+
+            # Mock MCP client
+            mock_client = MagicMock()
+            mock_tool1 = MagicMock()
+            mock_tool1.name = "create_issue"
+            mock_tool1.description = "Create a GitHub issue"
+            mock_tool1.input_schema = {"type": "object"}
+            mock_client.get_tools = AsyncMock(return_value=[mock_tool1])
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(cli, ["index-mcp", "--server", "github"])
+
+            assert result.exit_code == 0
+            assert "Indexing tools from: github" in result.output
+            assert "Found 1 tools" in result.output
+            assert "✅ Indexed 1 tools from github" in result.output
+            assert "Done!" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()
+
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_all_servers(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test indexing all servers."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create MCP config with multiple servers
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config = {
+                "mcpServers": {
+                    "github": {"command": "npx", "args": ["github-server"]},
+                    "gitlab": {"command": "npx", "args": ["gitlab-server"]},
+                }
+            }
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            # Mock embedder
+            mock_embedder = MagicMock()
+            mock_embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+            mock_embedder_fn.return_value = mock_embedder
+
+            # Mock database
+            mock_db = MagicMock()
+            mock_db.upsert_document = AsyncMock()
+            mock_db_cls.return_value = mock_db
+
+            # Mock MCP client
+            mock_client = MagicMock()
+            mock_tool1 = MagicMock()
+            mock_tool1.name = "tool1"
+            mock_tool1.description = "Test tool"
+            mock_tool1.input_schema = {}
+            mock_client.get_tools = AsyncMock(return_value=[mock_tool1])
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(cli, ["index-mcp", "--all"])
+
+            assert result.exit_code == 0
+            assert "Indexing tools from: github" in result.output
+            assert "Indexing tools from: gitlab" in result.output
+            assert "Done!" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()
+
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_custom_config_path(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test indexing with custom MCP config path."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create custom MCP config
+            custom_mcp_config = Path.cwd() / "custom_mcp.json"
+            mcp_config = {"mcpServers": {"test": {"command": "test", "args": []}}}
+            custom_mcp_config.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            # Mock embedder
+            mock_embedder = MagicMock()
+            mock_embedder.embed = AsyncMock(return_value=[0.1] * 1536)
+            mock_embedder_fn.return_value = mock_embedder
+
+            # Mock database
+            mock_db = MagicMock()
+            mock_db.upsert_document = AsyncMock()
+            mock_db_cls.return_value = mock_db
+
+            # Mock MCP client
+            mock_client = MagicMock()
+            mock_client.get_tools = AsyncMock(return_value=[])
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(cli, ["index-mcp", "--config", str(custom_mcp_config), "--all"])
+
+            assert result.exit_code == 0
+            assert "Indexing tools from: test" in result.output
+
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_server_not_found(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test indexing with nonexistent server name."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create MCP config
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config = {"mcpServers": {"github": {"command": "npx", "args": []}}}
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            result = runner.invoke(cli, ["index-mcp", "--server", "nonexistent"])
+
+            assert result.exit_code == 0
+            assert "Server not found: nonexistent" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()
+
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.MCPClientManager")
+    def test_index_mcp_connection_error(
+        self,
+        mock_client_cls,
+        mock_config_cls,
+        mock_db_cls,
+        mock_embedder_fn,
+        runner,
+        tmp_path,
+    ):
+        """Test graceful error handling on connection failure."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create MCP config
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config = {"mcpServers": {"github": {"command": "npx", "args": []}}}
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            # Mock config
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
+            # Mock embedder
+            mock_embedder = MagicMock()
+            mock_embedder_fn.return_value = mock_embedder
+
+            # Mock database
+            mock_db = MagicMock()
+            mock_db_cls.return_value = mock_db
+
+            # Mock MCP client to raise exception
+            mock_client = MagicMock()
+            mock_client.get_tools = AsyncMock(side_effect=Exception("Connection failed"))
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(cli, ["index-mcp", "--server", "github"])
+
+            assert result.exit_code == 0
+            assert "❌ Failed to index github: Connection failed" in result.output
+            assert "Done!" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()
+
+    def test_index_mcp_no_nexus_config(self, runner, tmp_path):
+        """Test index-mcp fails when nexus_config.json is not found."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create MCP config
+            mcp_config_dir = Path.home() / ".config" / "mcp"
+            mcp_config_dir.mkdir(parents=True, exist_ok=True)
+            mcp_config_path = mcp_config_dir / "config.json"
+            mcp_config = {"mcpServers": {"test": {"command": "test", "args": []}}}
+            mcp_config_path.write_text(json.dumps(mcp_config))
+
+            result = runner.invoke(cli, ["index-mcp", "--server", "test"])
+
+            assert "nexus_config.json not found" in result.output
+
+            # Cleanup
+            mcp_config_path.unlink()

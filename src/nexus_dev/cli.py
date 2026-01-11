@@ -9,6 +9,7 @@ Provides commands for:
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import stat
 from collections.abc import Coroutine
@@ -533,6 +534,115 @@ def reindex_command() -> None:
 
     click.echo("")
     click.echo(f"✅ Re-indexed {total_chunks} chunks from {len(files_to_index)} files")
+
+
+@cli.command("index-mcp")
+@click.option("--server", "-s", help="Server name to index (from mcp_config.json)")
+@click.option(
+    "--config",
+    "-c",
+    type=click.Path(exists=True),
+    help="Path to MCP config file (default: ~/.config/mcp/config.json)",
+)
+@click.option("--all", "-a", "index_all", is_flag=True, help="Index all configured servers")
+def index_mcp_command(server: str | None, config: str | None, index_all: bool) -> None:
+    """Index MCP tool documentation into the knowledge base.
+
+    This command reads tool schemas from MCP servers and indexes them
+    for semantic search via the search_tools command.
+
+    Examples:
+        nexus-index-mcp --server github
+        nexus-index-mcp --all
+        nexus-index-mcp --config ~/my-mcp-config.json --all
+    """
+    # Load MCP config
+    config_path = Path(config) if config else Path.home() / ".config" / "mcp" / "config.json"
+    if not config_path.exists():
+        click.echo(f"MCP config not found: {config_path}")
+        click.echo("Specify --config or create ~/.config/mcp/config.json")
+        return
+
+    mcp_config = json.loads(config_path.read_text())
+
+    # Determine which servers to index
+    servers_to_index = []
+    if index_all:
+        servers_to_index = list(mcp_config.get("mcpServers", {}).keys())
+    elif server:
+        servers_to_index = [server]
+    else:
+        click.echo("Specify --server or --all")
+        return
+
+    # Index each server
+    asyncio.run(_index_mcp_servers(mcp_config, servers_to_index))
+
+
+async def _index_mcp_servers(mcp_config: dict[str, Any], server_names: list[str]) -> None:
+    """Index tools from specified MCP servers."""
+    from .mcp_client import MCPClientManager, MCPServerConnection
+
+    # Load config
+    config_path = Path.cwd() / "nexus_config.json"
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+    client = MCPClientManager()
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    for name in server_names:
+        server_config = mcp_config.get("mcpServers", {}).get(name)
+        if not server_config:
+            click.echo(f"Server not found: {name}")
+            continue
+
+        click.echo(f"Indexing tools from: {name}")
+
+        try:
+            connection = MCPServerConnection(
+                name=name,
+                command=server_config.get("command", ""),
+                args=server_config.get("args", []),
+                env=server_config.get("env"),
+            )
+
+            tools = await client.get_tools(connection)
+            click.echo(f"  Found {len(tools)} tools")
+
+            # Create documents and index
+            for tool in tools:
+                text = f"{name}.{tool.name}: {tool.description}"
+                vector = await embedder.embed(text)
+
+                doc = Document(
+                    id=f"{name}:{tool.name}",
+                    text=text,
+                    vector=vector,
+                    project_id="mcp_tools",
+                    file_path=f"mcp://{name}/{tool.name}",
+                    doc_type=DocumentType.TOOL,
+                    chunk_type="tool",
+                    language="mcp",
+                    name=tool.name,
+                    start_line=0,
+                    end_line=0,
+                    server_name=name,
+                    parameters_schema=json.dumps(tool.input_schema),
+                )
+
+                await database.upsert_document(doc)
+
+            click.echo(f"  ✅ Indexed {len(tools)} tools from {name}")
+
+        except Exception as e:
+            click.echo(f"  ❌ Failed to index {name}: {e}")
+
+    click.echo("Done!")
 
 
 # Entry points for pyproject.toml scripts
