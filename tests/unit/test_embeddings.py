@@ -3,12 +3,10 @@
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 from nexus_dev.config import NexusConfig
 from nexus_dev.embeddings import (
-    EmbeddingProvider,
     OllamaEmbedder,
     OpenAIEmbedder,
     create_embedder,
@@ -61,9 +59,7 @@ class TestOpenAIEmbedder:
         embedder = OpenAIEmbedder(api_key="test-key")
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]
-        }
+        mock_response.json.return_value = {"data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]}
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
@@ -172,13 +168,9 @@ class TestOllamaEmbedder:
 
     def test_init_custom(self):
         """Test initialization with custom values."""
-        embedder = OllamaEmbedder(
-            model="mxbai-embed-large", base_url="http://custom:8080/"
-        )
+        embedder = OllamaEmbedder(model="mxbai-embed-large", base_url="http://custom:8080/")
         assert embedder._model == "mxbai-embed-large"
-        assert (
-            embedder._base_url == "http://custom:8080"
-        )  # Trailing slash removed
+        assert embedder._base_url == "http://custom:8080"  # Trailing slash removed
 
     def test_model_name_property(self):
         """Test model_name property."""
@@ -190,9 +182,7 @@ class TestOllamaEmbedder:
         assert OllamaEmbedder(model="nomic-embed-text").dimensions == 768
         assert OllamaEmbedder(model="mxbai-embed-large").dimensions == 1024
         assert OllamaEmbedder(model="all-minilm").dimensions == 384
-        assert (
-            OllamaEmbedder(model="unknown").dimensions == 768
-        )  # Default
+        assert OllamaEmbedder(model="unknown").dimensions == 768  # Default
 
     @pytest.mark.asyncio
     async def test_embed_with_embeddings_key(self):
@@ -250,9 +240,7 @@ class TestOllamaEmbedder:
         embedder = OllamaEmbedder()
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "embeddings": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
-        }
+        mock_response.json.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]}
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()

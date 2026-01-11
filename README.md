@@ -131,6 +131,33 @@ if [ -n "$MODIFIED" ]; then
 fi
 ```
 
+## Configuring AI Agents
+
+To maximize Nexus-Dev's value, configure your AI coding assistant to use its tools automatically.
+
+### Add AGENTS.md to Your Project
+
+Copy our template to your project:
+
+```bash
+cp path/to/nexus-dev/docs/AGENTS_TEMPLATE.md your-project/AGENTS.md
+```
+
+This instructs AI agents to:
+- **Search first** before implementing features
+- **Record lessons** after solving bugs
+- Use `get_project_context()` at session start
+
+### Add Workflow Files (Optional)
+
+```bash
+cp -r path/to/nexus-dev/.agent/workflows your-project/.agent/
+```
+
+This adds slash commands: `/start-session`, `/search-first`, `/record-lesson`, `/index-code`
+
+📖 See [docs/configuring-agents.md](docs/configuring-agents.md) for detailed setup instructions.
+
 ## Architecture
 
 ```mermaid

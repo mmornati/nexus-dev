@@ -1,6 +1,6 @@
 """Tests for NexusDatabase with mocked LanceDB."""
 
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -9,7 +9,6 @@ from nexus_dev.database import (
     Document,
     DocumentType,
     NexusDatabase,
-    SearchResult,
 )
 
 
@@ -106,9 +105,7 @@ class TestNexusDatabase:
     """Test suite for NexusDatabase class."""
 
     @patch("nexus_dev.database.lancedb")
-    def test_connect_creates_table_if_not_exists(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    def test_connect_creates_table_if_not_exists(self, mock_lancedb, mock_config, mock_embedder):
         """Test that connect creates table when it doesn't exist."""
         mock_db = MagicMock()
         mock_db.table_names.return_value = []
@@ -124,9 +121,7 @@ class TestNexusDatabase:
         assert db._table == mock_table
 
     @patch("nexus_dev.database.lancedb")
-    def test_connect_opens_existing_table(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    def test_connect_opens_existing_table(self, mock_lancedb, mock_config, mock_embedder):
         """Test that connect opens existing table."""
         mock_db = MagicMock()
         mock_db.table_names.return_value = ["documents"]
@@ -143,9 +138,7 @@ class TestNexusDatabase:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_upsert_document(
-        self, mock_lancedb, mock_config, mock_embedder, sample_document
-    ):
+    async def test_upsert_document(self, mock_lancedb, mock_config, mock_embedder, sample_document):
         """Test upserting a single document."""
         mock_table = MagicMock()
         mock_db = MagicMock()
@@ -165,9 +158,7 @@ class TestNexusDatabase:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_upsert_documents_empty_list(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    async def test_upsert_documents_empty_list(self, mock_lancedb, mock_config, mock_embedder):
         """Test upserting empty list returns empty list."""
         db = NexusDatabase(mock_config, mock_embedder)
 
@@ -177,9 +168,7 @@ class TestNexusDatabase:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_upsert_documents_multiple(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    async def test_upsert_documents_multiple(self, mock_lancedb, mock_config, mock_embedder):
         """Test upserting multiple documents."""
         mock_table = MagicMock()
         mock_db = MagicMock()
@@ -255,9 +244,7 @@ class TestNexusDatabase:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_search_with_filters(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    async def test_search_with_filters(self, mock_lancedb, mock_config, mock_embedder):
         """Test search with project and doc_type filters."""
         mock_df = create_mock_dataframe([])
 
@@ -378,9 +365,7 @@ class TestNexusDatabase:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_get_project_stats_empty(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    async def test_get_project_stats_empty(self, mock_lancedb, mock_config, mock_embedder):
         """Test getting stats for project with no documents."""
         mock_search = MagicMock()
         mock_search.where.return_value = mock_search
@@ -461,9 +446,7 @@ class TestNexusDatabase:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_get_recent_lessons_empty(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    async def test_get_recent_lessons_empty(self, mock_lancedb, mock_config, mock_embedder):
         """Test getting recent lessons when none exist."""
         mock_search = MagicMock()
         mock_search.where.return_value = mock_search
@@ -486,9 +469,7 @@ class TestNexusDatabase:
         assert lessons == []
 
     @patch("nexus_dev.database.lancedb")
-    def test_ensure_connected_auto_connects(
-        self, mock_lancedb, mock_config, mock_embedder
-    ):
+    def test_ensure_connected_auto_connects(self, mock_lancedb, mock_config, mock_embedder):
         """Test that _ensure_connected auto-connects if not connected."""
         mock_table = MagicMock()
         mock_db = MagicMock()

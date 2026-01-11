@@ -54,9 +54,7 @@ class TestSearchKnowledge:
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
-            return_value=[
-                make_search_result(name="my_function", text="def my_function(): pass")
-            ]
+            return_value=[make_search_result(name="my_function", text="def my_function(): pass")]
         )
         mock_get_db.return_value = mock_db
 
@@ -309,9 +307,7 @@ class TestRecordLesson:
     @patch("nexus_dev.server._get_database")
     @patch("nexus_dev.server._get_embedder")
     @patch("nexus_dev.server._get_config")
-    async def test_record_lesson_success(
-        self, mock_get_config, mock_get_embedder, mock_get_db
-    ):
+    async def test_record_lesson_success(self, mock_get_config, mock_get_embedder, mock_get_db):
         """Test recording a lesson successfully."""
         from nexus_dev.server import record_lesson
 
@@ -469,10 +465,9 @@ class TestHelperFunctions:
     @patch("nexus_dev.server.Path")
     def test_get_config_loads_from_file(self, mock_path):
         """Test _get_config loads config when file exists."""
-        from nexus_dev.server import _get_config
-
         # Reset global state
         import nexus_dev.server as server
+        from nexus_dev.server import _get_config
 
         server._config = None
 
@@ -490,9 +485,8 @@ class TestHelperFunctions:
     @patch("nexus_dev.server.create_embedder")
     def test_get_embedder_creates_once(self, mock_create, mock_get_config):
         """Test _get_embedder creates embedder only once."""
-        from nexus_dev.server import _get_embedder
-
         import nexus_dev.server as server
+        from nexus_dev.server import _get_embedder
 
         server._embedder = None
 

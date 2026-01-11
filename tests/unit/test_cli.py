@@ -34,9 +34,7 @@ class TestCliInit:
     def test_init_creates_lessons_directory(self, runner, tmp_path):
         """Test init command creates .nexus/lessons directory."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = runner.invoke(
-                cli, ["init", "--project-name", "test", "--no-hook"]
-            )
+            result = runner.invoke(cli, ["init", "--project-name", "test", "--no-hook"])
 
             assert result.exit_code == 0
             lessons_dir = Path.cwd() / ".nexus" / "lessons"
