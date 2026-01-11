@@ -351,6 +351,10 @@ def _should_index(file_path: Path, config: NexusConfig) -> bool:
         if fnmatch(rel_path, pattern):
             return False
 
+        # Also check without leading **/ if present (for root matches)
+        if pattern.startswith("**/") and fnmatch(rel_path, pattern[3:]):
+            return False
+
     # Check include patterns
     for pattern in config.include_patterns:
         if fnmatch(rel_path, pattern):
@@ -481,8 +485,12 @@ def reindex_command() -> None:
     database.connect()
 
     click.echo("🗑️  Clearing existing index...")
-    deleted = _run_async(database.delete_by_project(config.project_id))
-    click.echo(f"   Deleted {deleted} chunks")
+    click.echo("🗑️  Clearing existing index...")
+    # Reset database to handle schema changes
+    database.reset()
+    # Re-connect to create new table with updated schema
+    database.connect()
+    click.echo("   Index cleared and schema updated")
 
     click.echo("")
     click.echo("📁 Re-indexing project...")
@@ -530,8 +538,8 @@ def reindex_command() -> None:
                 )
                 total_chunks += count
 
-        except Exception:
-            pass
+        except Exception as e:
+            click.echo(f"  ❌ Failed to index {file_path.name}: {e!s}", err=True)
 
     click.echo("")
     click.echo(f"✅ Re-indexed {total_chunks} chunks from {len(files_to_index)} files")

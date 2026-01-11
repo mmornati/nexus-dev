@@ -207,6 +207,56 @@ class TestCliIndex:
 
             assert result.exit_code == 0 or "Indexed" in result.output
 
+    def test_index_ignores_recursive_excludes(self, runner, tmp_path):
+        """Test that directory exclusion patterns starting with **/ work correctly."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+
+            # Create structure
+            # .venv/lib/foo.py (should be excluded by **/.venv/**)
+            venv_dir = Path.cwd() / ".venv" / "lib"
+            venv_dir.mkdir(parents=True)
+            (venv_dir / "foo.py").write_text("pass")
+
+            # src/main.py (should be included)
+            src_dir = Path.cwd() / "src"
+            src_dir.mkdir()
+            (src_dir / "main.py").write_text("pass")
+
+            # Mock config with problematic pattern
+            with (
+                patch("nexus_dev.cli.NexusConfig") as mock_config_cls,
+                patch("nexus_dev.cli.create_embedder") as mock_embedder_fn,
+                patch("nexus_dev.cli.NexusDatabase") as mock_db_cls,
+            ):
+                mock_config = MagicMock()
+                mock_config.project_id = "test"
+                mock_config.include_patterns = ["**/*.py"]
+                # The pattern that was failing for root directories
+                mock_config.exclude_patterns = ["**/.venv/**"]
+                mock_config_cls.load.return_value = mock_config
+
+                # Mock dependencies
+                mock_embedder = MagicMock()
+                mock_embedder.embed_batch = AsyncMock(return_value=[])  # Empty list is fine
+                mock_embedder_fn.return_value = mock_embedder
+
+                mock_db = MagicMock()
+                mock_db.delete_by_file = AsyncMock()
+                mock_db_cls.return_value = mock_db
+
+                # Run index command recursively on current dir
+                result = runner.invoke(cli, ["index", ".", "-r"])
+
+                assert result.exit_code == 0
+
+                # Check output to see what was indexed
+                # valid file should be indexed
+                assert "src/main.py" in result.output or "main.py" in result.output
+                # venv file should NOT be indexed
+                assert ".venv/lib/foo.py" not in result.output and "foo.py" not in result.output
+
 
 class TestCliReindex:
     """Test suite for nexus-reindex command."""

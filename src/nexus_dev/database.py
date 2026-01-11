@@ -215,6 +215,16 @@ class NexusDatabase:
             ]
         )
 
+    def reset(self) -> None:
+        """Delete the entire table to force schema recreation."""
+        if self._db is None:
+            self.connect()
+        assert self._db is not None
+
+        if self.TABLE_NAME in self._db.table_names():
+            self._db.drop_table(self.TABLE_NAME)
+            self._table = None
+
     def connect(self) -> None:
         """Connect to the LanceDB database and ensure table exists."""
         db_path = self.config.get_db_path()
