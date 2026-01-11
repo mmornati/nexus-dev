@@ -27,6 +27,7 @@ class MCPConfig:
     version: str
     servers: dict[str, MCPServerConfig]
     profiles: dict[str, list[str]] = field(default_factory=dict)
+    active_profile: str = "default"
 
     @classmethod
     def load(cls, path: str | Path) -> MCPConfig:
@@ -62,16 +63,36 @@ class MCPConfig:
         }
 
         profiles = data.get("profiles", {})
+        active_profile = data.get("active_profile", "default")
 
-        return cls(version=data["version"], servers=servers, profiles=profiles)
+        return cls(
+            version=data["version"],
+            servers=servers,
+            profiles=profiles,
+            active_profile=active_profile,
+        )
 
     def get_active_servers(self) -> list[MCPServerConfig]:
-        """Get a list of enabled MCP server configurations.
+        """Get a list of enabled MCP server configurations in the active profile.
 
         Returns:
-            List of enabled MCPServerConfig instances.
+            List of enabled MCPServerConfig instances from the active profile.
         """
-        return [s for s in self.servers.values() if s.enabled]
+        # If active profile doesn't exist or is empty, return all enabled servers
+        if self.active_profile not in self.profiles:
+            return [s for s in self.servers.values() if s.enabled]
+
+        # Get servers in active profile
+        profile_server_names = self.profiles[self.active_profile]
+        active_servers = []
+
+        for name in profile_server_names:
+            if name in self.servers:
+                server = self.servers[name]
+                if server.enabled:
+                    active_servers.append(server)
+
+        return active_servers
 
     def save(self, path: str | Path) -> None:
         """Save configuration to a JSON file.
@@ -94,6 +115,7 @@ class MCPConfig:
                 for name, server in self.servers.items()
             },
             "profiles": self.profiles,
+            "active_profile": self.active_profile,
         }
 
         # Validate before saving

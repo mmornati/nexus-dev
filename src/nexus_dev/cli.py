@@ -779,6 +779,58 @@ def mcp_add_command(
     click.echo(f"Added {name} to profile '{profile}'")
 
 
+@mcp_group.command("list")
+@click.option(
+    "--all", "-a", "show_all", is_flag=True, help="Show all servers, not just active profile"
+)
+def mcp_list_command(show_all: bool) -> None:
+    """List configured MCP servers.
+
+    Examples:
+        nexus-mcp list
+        nexus-mcp list --all
+    """
+    config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+    if not config_path.exists():
+        click.echo("No MCP config. Run 'nexus-mcp init' first")
+        return
+
+    mcp_config = MCPConfig.load(config_path)
+
+    click.echo(f"Active profile: {mcp_config.active_profile}")
+    click.echo("")
+
+    if show_all:
+        click.echo("All servers:")
+        servers_to_show = list(mcp_config.servers.items())
+    else:
+        click.echo("Active servers:")
+        # Get active profile server names
+        if mcp_config.active_profile in mcp_config.profiles:
+            active_server_names = mcp_config.profiles[mcp_config.active_profile]
+            # Filter to only enabled servers
+            servers_to_show = [
+                (name, mcp_config.servers[name])
+                for name in active_server_names
+                if name in mcp_config.servers and mcp_config.servers[name].enabled
+            ]
+        else:
+            # If no active profile, show all enabled servers
+            servers_to_show = [
+                (name, server) for name, server in mcp_config.servers.items() if server.enabled
+            ]
+
+    for name, server in servers_to_show:
+        status = "✓" if server.enabled else "✗"
+        click.echo(f"  {status} {name}")
+        click.echo(f"    Command: {server.command} {' '.join(server.args)}")
+        if server.env:
+            click.echo(f"    Env: {', '.join(server.env.keys())}")
+
+    click.echo("")
+    click.echo(f"Profiles: {', '.join(mcp_config.profiles.keys())}")
+
+
 # Entry points for pyproject.toml scripts
 def init_command_entry() -> None:
     """Entry point for nexus-init."""

@@ -1002,3 +1002,158 @@ class TestCliMCPAdd:
             assert config["servers"]["github"]["enabled"] is True
             assert "production" in config["profiles"]
             assert "github" in config["profiles"]["production"]
+
+
+class TestCliMCPList:
+    """Test suite for nexus-mcp list command."""
+
+    def test_mcp_list_no_config(self, runner, tmp_path):
+        """Test mcp list shows error when config doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["mcp", "list"])
+
+            assert "No MCP config" in result.output
+            assert "Run 'nexus-mcp init' first" in result.output
+
+    def test_mcp_list_active_profile_servers(self, runner, tmp_path):
+        """Test mcp list shows servers from active profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with servers and profiles
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-github"],
+                        "env": {"GITHUB_TOKEN": "test"},
+                        "enabled": True,
+                    },
+                    "gitlab": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-gitlab"],
+                        "enabled": True,
+                    },
+                },
+                "profiles": {
+                    "default": ["github"],
+                    "all": ["github", "gitlab"],
+                },
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "list"])
+
+            assert result.exit_code == 0
+            assert "Active profile: default" in result.output
+            assert "Active servers:" in result.output
+            assert "✓ github" in result.output
+            assert "Command: npx -y @modelcontextprotocol/server-github" in result.output
+            assert "Env: GITHUB_TOKEN" in result.output
+            # gitlab should NOT be in the output (not in active profile)
+            assert "gitlab" not in result.output
+            assert (
+                "Profiles: default, all" in result.output
+                or "Profiles: all, default" in result.output
+            )
+
+    def test_mcp_list_all_servers(self, runner, tmp_path):
+        """Test mcp list --all shows all servers."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {
+                        "command": "npx",
+                        "args": ["-y", "github-server"],
+                        "enabled": True,
+                    },
+                    "gitlab": {
+                        "command": "npx",
+                        "args": ["-y", "gitlab-server"],
+                        "enabled": False,
+                    },
+                },
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "list", "--all"])
+
+            assert result.exit_code == 0
+            assert "All servers:" in result.output
+            assert "✓ github" in result.output
+            assert "✗ gitlab" in result.output  # Should show disabled server with ✗
+            assert "Command: npx -y github-server" in result.output
+            assert "Command: npx -y gitlab-server" in result.output
+
+    def test_mcp_list_shows_disabled_status(self, runner, tmp_path):
+        """Test mcp list shows enabled/disabled status correctly."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with disabled server
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "enabled-server": {"command": "cmd1", "enabled": True},
+                    "disabled-server": {"command": "cmd2", "enabled": False},
+                },
+                "profiles": {"default": ["enabled-server", "disabled-server"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "list"])
+
+            assert result.exit_code == 0
+            # Only enabled server should show in active list (disabled are filtered)
+            assert "✓ enabled-server" in result.output
+            # Disabled server should not appear (filtered out by get_active_servers logic)
+            assert "disabled-server" not in result.output
+
+    def test_mcp_list_no_env_vars(self, runner, tmp_path):
+        """Test mcp list doesn't show Env line when no env vars."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config without env vars
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"simple": {"command": "simple-cmd", "args": [], "enabled": True}},
+                "profiles": {"default": ["simple"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "list"])
+
+            assert result.exit_code == 0
+            assert "✓ simple" in result.output
+            assert "Command: simple-cmd" in result.output
+            # Should NOT show "Env:" line
+            assert "Env:" not in result.output
+
+    def test_mcp_list_empty_servers(self, runner, tmp_path):
+        """Test mcp list with no servers."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create empty config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {"version": "1.0", "servers": {}, "profiles": {}, "active_profile": "default"}
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "list"])
+
+            assert result.exit_code == 0
+            assert "Active profile: default" in result.output
+            assert "Active servers:" in result.output
+            # No servers to show
+            assert "✓" not in result.output
+            assert "✗" not in result.output

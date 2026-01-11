@@ -52,6 +52,11 @@
                 }
             },
             "default": {}
+        },
+        "active_profile": {
+            "type": "string",
+            "description": "The currently active profile",
+            "default": "default"
         }
     },
     "required": [
