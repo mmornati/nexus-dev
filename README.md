@@ -137,6 +137,8 @@ Nexus-Dev exposes 7 tools to AI agents:
 }
 ```
 
+📖 See [docs/adding-mcp-servers.md](docs/adding-mcp-servers.md) for a guide on adding custom MCP servers.
+
 ### Supported Embedding Providers
 
 Nexus-Dev supports multiple embedding providers. Choose the one that best fits your needs.
