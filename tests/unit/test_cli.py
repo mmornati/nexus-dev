@@ -1157,3 +1157,383 @@ class TestCliMCPList:
             # No servers to show
             assert "✓" not in result.output
             assert "✗" not in result.output
+
+
+class TestCliMCPProfile:
+    """Test suite for nexus-mcp profile command."""
+
+    def test_mcp_profile_no_config(self, runner, tmp_path):
+        """Test profile command fails when config doesn't exist."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["mcp", "profile"])
+
+            assert "Run 'nexus-mcp init' first" in result.output
+
+    def test_mcp_profile_show_current(self, runner, tmp_path):
+        """Test showing current active profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with profiles
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": ["github"], "dev": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile"])
+
+            assert result.exit_code == 0
+            assert "Active: default" in result.output
+            assert "Servers: github" in result.output
+
+    def test_mcp_profile_show_current_empty(self, runner, tmp_path):
+        """Test showing current profile with no servers."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with empty profile
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile"])
+
+            assert result.exit_code == 0
+            assert "Active: default" in result.output
+            assert "Servers: (none)" in result.output
+
+    def test_mcp_profile_switch(self, runner, tmp_path):
+        """Test switching to a different profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with multiple profiles
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": ["github"], "dev": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "dev"])
+
+            assert result.exit_code == 0
+            assert "Switched to profile: dev" in result.output
+
+            # Verify config was updated
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["active_profile"] == "dev"
+
+    def test_mcp_profile_switch_nonexistent(self, runner, tmp_path):
+        """Test switching to a nonexistent profile fails."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "nonexistent"])
+
+            assert result.exit_code == 0
+            assert "Profile 'nonexistent' not found" in result.output
+
+            # Verify active profile wasn't changed
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["active_profile"] == "default"
+
+    def test_mcp_profile_create(self, runner, tmp_path):
+        """Test creating a new profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "dev", "--create"])
+
+            assert result.exit_code == 0
+            assert "Created profile: dev" in result.output
+
+            # Verify profile was created
+            updated_config = json.loads(config_path.read_text())
+            assert "dev" in updated_config["profiles"]
+            assert updated_config["profiles"]["dev"] == []
+
+    def test_mcp_profile_create_existing(self, runner, tmp_path):
+        """Test creating a profile that already exists fails."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with existing profile
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {},
+                "profiles": {"default": [], "dev": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "dev", "--create"])
+
+            assert result.exit_code == 0
+            assert "Profile 'dev' exists" in result.output
+
+    def test_mcp_profile_add_server(self, runner, tmp_path):
+        """Test adding a server to a profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "default", "--add", "github"])
+
+            assert result.exit_code == 0
+            assert "Added github to default" in result.output
+
+            # Verify server was added
+            updated_config = json.loads(config_path.read_text())
+            assert "github" in updated_config["profiles"]["default"]
+
+    def test_mcp_profile_add_multiple_servers(self, runner, tmp_path):
+        """Test adding multiple servers to a profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {"command": "npx", "enabled": True},
+                    "gitlab": {"command": "npx", "enabled": True},
+                },
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(
+                cli, ["mcp", "profile", "default", "--add", "github", "--add", "gitlab"]
+            )
+
+            assert result.exit_code == 0
+            assert "Added github to default" in result.output
+            assert "Added gitlab to default" in result.output
+
+            # Verify servers were added
+            updated_config = json.loads(config_path.read_text())
+            assert "github" in updated_config["profiles"]["default"]
+            assert "gitlab" in updated_config["profiles"]["default"]
+
+    def test_mcp_profile_add_duplicate_server(self, runner, tmp_path):
+        """Test adding a server that's already in the profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with server already in profile
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "default", "--add", "github"])
+
+            assert result.exit_code == 0
+            # Should not add duplicate
+            assert "Added github to default" not in result.output
+
+            # Verify no duplicate
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["profiles"]["default"].count("github") == 1
+
+    def test_mcp_profile_remove_server(self, runner, tmp_path):
+        """Test removing a server from a profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "default", "--remove", "github"])
+
+            assert result.exit_code == 0
+            assert "Removed github from default" in result.output
+
+            # Verify server was removed
+            updated_config = json.loads(config_path.read_text())
+            assert "github" not in updated_config["profiles"]["default"]
+
+    def test_mcp_profile_remove_multiple_servers(self, runner, tmp_path):
+        """Test removing multiple servers from a profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {"command": "npx", "enabled": True},
+                    "gitlab": {"command": "npx", "enabled": True},
+                },
+                "profiles": {"default": ["github", "gitlab"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(
+                cli, ["mcp", "profile", "default", "--remove", "github", "--remove", "gitlab"]
+            )
+
+            assert result.exit_code == 0
+            assert "Removed github from default" in result.output
+            assert "Removed gitlab from default" in result.output
+
+            # Verify servers were removed
+            updated_config = json.loads(config_path.read_text())
+            assert "github" not in updated_config["profiles"]["default"]
+            assert "gitlab" not in updated_config["profiles"]["default"]
+
+    def test_mcp_profile_remove_nonexistent_server(self, runner, tmp_path):
+        """Test removing a server that's not in the profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "default", "--remove", "github"])
+
+            assert result.exit_code == 0
+            # Should not output removal message
+            assert "Removed github from default" not in result.output
+
+    def test_mcp_profile_add_and_remove(self, runner, tmp_path):
+        """Test adding and removing servers in the same command."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {
+                    "github": {"command": "npx", "enabled": True},
+                    "gitlab": {"command": "npx", "enabled": True},
+                },
+                "profiles": {"default": ["github"]},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(
+                cli,
+                [
+                    "mcp",
+                    "profile",
+                    "default",
+                    "--add",
+                    "gitlab",
+                    "--remove",
+                    "github",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert "Added gitlab to default" in result.output
+            assert "Removed github from default" in result.output
+
+            # Verify changes
+            updated_config = json.loads(config_path.read_text())
+            assert "gitlab" in updated_config["profiles"]["default"]
+            assert "github" not in updated_config["profiles"]["default"]
+
+    def test_mcp_profile_operations_dont_switch(self, runner, tmp_path):
+        """Test that add/remove operations don't switch active profile."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config with multiple profiles
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": [], "dev": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            # Add server to dev profile
+            result = runner.invoke(cli, ["mcp", "profile", "dev", "--add", "github"])
+
+            assert result.exit_code == 0
+            assert "Added github to dev" in result.output
+            # Should not switch
+            assert "Switched to profile: dev" not in result.output
+
+            # Verify active profile didn't change
+            updated_config = json.loads(config_path.read_text())
+            assert updated_config["active_profile"] == "default"
+
+    def test_mcp_profile_create_and_add(self, runner, tmp_path):
+        """Test creating a profile and adding a server in the same command."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create config
+            config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config = {
+                "version": "1.0",
+                "servers": {"github": {"command": "npx", "enabled": True}},
+                "profiles": {"default": []},
+                "active_profile": "default",
+            }
+            config_path.write_text(json.dumps(config))
+
+            result = runner.invoke(cli, ["mcp", "profile", "dev", "--create", "--add", "github"])
+
+            assert result.exit_code == 0
+            assert "Created profile: dev" in result.output
+            assert "Added github to dev" in result.output
+
+            # Verify profile was created and server was added
+            updated_config = json.loads(config_path.read_text())
+            assert "dev" in updated_config["profiles"]
+            assert "github" in updated_config["profiles"]["dev"]

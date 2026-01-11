@@ -831,6 +831,70 @@ def mcp_list_command(show_all: bool) -> None:
     click.echo(f"Profiles: {', '.join(mcp_config.profiles.keys())}")
 
 
+@mcp_group.command("profile")
+@click.argument("name", required=False)
+@click.option("--add", "-a", multiple=True, help="Add server to profile")
+@click.option("--remove", "-r", multiple=True, help="Remove server from profile")
+@click.option("--create", is_flag=True, help="Create new profile")
+def mcp_profile_command(
+    name: str | None, add: tuple[str, ...], remove: tuple[str, ...], create: bool
+) -> None:
+    """Manage MCP profiles.
+
+    Without arguments, shows current profile. With name, switches to that profile.
+
+    Examples:
+        nexus-mcp profile              # Show current
+        nexus-mcp profile dev          # Switch to 'dev'
+        nexus-mcp profile dev --create # Create new 'dev' profile
+        nexus-mcp profile default --add homeassistant
+        nexus-mcp profile default --remove github
+    """
+    config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+    if not config_path.exists():
+        click.echo("Run 'nexus-mcp init' first")
+        return
+
+    mcp_config = MCPConfig.load(config_path)
+
+    if not name:
+        # Show current profile
+        click.echo(f"Active: {mcp_config.active_profile}")
+        servers = mcp_config.profiles.get(mcp_config.active_profile, [])
+        click.echo(f"Servers: {', '.join(servers) or '(none)'}")
+        return
+
+    if create:
+        if name in mcp_config.profiles:
+            click.echo(f"Profile '{name}' exists")
+            return
+        mcp_config.profiles[name] = []
+        click.echo(f"Created profile: {name}")
+
+    if name not in mcp_config.profiles:
+        click.echo(f"Profile '{name}' not found")
+        return
+
+    # Add servers
+    for server in add:
+        if server not in mcp_config.profiles[name]:
+            mcp_config.profiles[name].append(server)
+            click.echo(f"Added {server} to {name}")
+
+    # Remove servers
+    for server in remove:
+        if server in mcp_config.profiles[name]:
+            mcp_config.profiles[name].remove(server)
+            click.echo(f"Removed {server} from {name}")
+
+    # Switch profile
+    if not add and not remove and not create:
+        mcp_config.active_profile = name
+        click.echo(f"Switched to profile: {name}")
+
+    mcp_config.save(config_path)
+
+
 # Entry points for pyproject.toml scripts
 def init_command_entry() -> None:
     """Entry point for nexus-init."""
