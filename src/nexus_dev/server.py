@@ -846,6 +846,54 @@ async def record_lesson(
         return f"Failed to record lesson: {e!s}"
 
 
+@mcp.resource("mcp://nexus-dev/active-tools")
+async def get_active_tools_resource() -> str:
+    """List MCP tools from active profile servers.
+
+    Returns a list of tools that are available based on the current
+    profile configuration in .nexus/mcp_config.json.
+    """
+    mcp_config = _get_mcp_config()
+    if not mcp_config:
+        return "No MCP config found. Run 'nexus-mcp init' first."
+
+    database = _get_database()
+    active_servers = _get_active_server_names()
+
+    if not active_servers:
+        return f"No active servers in profile: {mcp_config.active_profile}"
+
+    # Query tools from active servers
+    tools = []
+    for server in active_servers:
+        # Use async search with doc_type filter
+        results = await database.search(
+            query="",
+            doc_type=DocumentType.TOOL,
+            limit=1000,  # Get all tools for this server
+        )
+        # Filter by server name in results
+        server_tools = [r for r in results if r.server_name == server]
+        tools.extend(server_tools)
+
+    # Format output
+    output = [f"# Active Tools (profile: {mcp_config.active_profile})", ""]
+
+    for server in active_servers:
+        server_tools = [t for t in tools if t.server_name == server]
+        output.append(f"## {server}")
+        if server_tools:
+            for tool in server_tools:
+                # Truncate description to 100 chars
+                desc = tool.text[:100] + "..." if len(tool.text) > 100 else tool.text
+                output.append(f"- {tool.name}: {desc}")
+        else:
+            output.append("*No tools found*")
+        output.append("")
+
+    return "\n".join(output)
+
+
 @mcp.tool()
 async def get_project_context(
     project_id: str | None = None,
