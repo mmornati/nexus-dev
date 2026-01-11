@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mcp import ClientSession
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from ..mcp_config import MCPServerConfig
 
@@ -15,6 +15,7 @@ from ..mcp_config import MCPServerConfig
 @dataclass
 class MCPConnection:
     """Active connection to an MCP server."""
+
     name: str
     config: MCPServerConfig
     session: ClientSession | None = None
@@ -27,11 +28,12 @@ class MCPConnection:
             if self.session is None:
                 try:
                     # 1. Start stdio client
-                    transport_cm = stdio_client(
-                        self.config.command,
-                        self.config.args,
+                    server_params = StdioServerParameters(
+                        command=self.config.command,
+                        args=self.config.args,
                         env=self.config.env,
                     )
+                    transport_cm = stdio_client(server_params)
                     read, write = await transport_cm.__aenter__()
                     self._cleanup_stack.append(transport_cm)
 
@@ -42,7 +44,7 @@ class MCPConnection:
 
                     # 3. Initialize
                     await self.session.initialize()
-                    
+
                 except Exception:
                     await self.disconnect()
                     raise
@@ -75,9 +77,9 @@ class ConnectionManager:
         async with self._lock:
             if name not in self._connections:
                 self._connections[name] = MCPConnection(name=name, config=config)
-            
+
             connection = self._connections[name]
-        
+
         # Connect outside the manager lock to avoid blocking other requests
         return await connection.connect()
 
