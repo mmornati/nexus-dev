@@ -13,6 +13,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -581,6 +582,77 @@ async def get_tool_schema(server: str, tool: str) -> str:
 
     except Exception as e:
         return f"Error connecting to {server}: {e}"
+
+
+@mcp.tool()
+async def invoke_tool(
+    server: str,
+    tool: str,
+    arguments: dict[str, Any] | None = None,
+) -> str:
+    """Invoke a tool on a backend MCP server.
+
+    Use search_tools first to find the right tool, then use this
+    to execute it.
+
+    Args:
+        server: MCP server name (e.g., "github", "homeassistant")
+        tool: Tool name (e.g., "create_issue", "turn_on_light")
+        arguments: Tool arguments as dictionary
+
+    Returns:
+        Tool execution result.
+
+    Example:
+        invoke_tool(
+            server="github",
+            tool="create_issue",
+            arguments={
+                "owner": "myorg",
+                "repo": "myrepo",
+                "title": "Bug fix",
+                "body": "Fixed the thing"
+            }
+        )
+    """
+    mcp_config = _get_mcp_config()
+    if not mcp_config:
+        return "No MCP config. Run 'nexus-mcp init' first."
+
+    if server not in mcp_config.servers:
+        available = ", ".join(sorted(mcp_config.servers.keys()))
+        return f"Server not found: {server}. Available: {available}"
+
+    server_config = mcp_config.servers[server]
+
+    if not server_config.enabled:
+        return f"Server is disabled: {server}"
+
+    conn_manager = _get_connection_manager()
+
+    try:
+        result = await conn_manager.invoke_tool(
+            server,
+            server_config,
+            tool,
+            arguments or {},
+        )
+
+        # Format result for AI consumption
+        if hasattr(result, "content"):
+            # MCP CallToolResult object
+            contents = []
+            for item in result.content:
+                if hasattr(item, "text"):
+                    contents.append(item.text)
+                else:
+                    contents.append(str(item))
+            return "\n".join(contents) if contents else "Tool executed successfully (no output)"
+
+        return str(result)
+
+    except Exception as e:
+        return f"Tool invocation failed: {e}"
 
 
 @mcp.tool()

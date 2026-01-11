@@ -90,3 +90,20 @@ class ConnectionManager:
             if coros:
                 await asyncio.gather(*coros, return_exceptions=True)
             self._connections.clear()
+
+    async def invoke_tool(
+        self, name: str, config: MCPServerConfig, tool: str, arguments: dict[str, Any]
+    ) -> Any:
+        """Invoke a tool on a backend MCP server.
+
+        Args:
+            name: Server name for connection pooling.
+            config: Server configuration.
+            tool: Tool name to invoke.
+            arguments: Tool arguments.
+
+        Returns:
+            Tool execution result (MCP CallToolResult).
+        """
+        session = await self.get_connection(name, config)
+        return await session.call_tool(tool, arguments)
