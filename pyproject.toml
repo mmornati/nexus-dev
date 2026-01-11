@@ -41,6 +41,7 @@ dev = [
 [project.scripts]
 nexus-init = "nexus_dev.cli:init_command"
 nexus-index = "nexus_dev.cli:index_command"
+nexus-status = "nexus_dev.cli:status_command"
 nexus-dev = "nexus_dev.server:main"
 
 [project.urls]

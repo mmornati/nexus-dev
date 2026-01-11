@@ -42,17 +42,34 @@ This creates:
 - `nexus_config.json` - Project configuration
 - `.nexus/lessons/` - Directory for learned lessons
 
-### 2. Index Your Code
+### 2. Set Your API Key (OpenAI only)
+
+The CLI commands require the API key in your environment:
 
 ```bash
-# Index specific directories
+export OPENAI_API_KEY="sk-..."
+```
+
+> **Tip**: Add this to your shell profile (`~/.zshrc`, `~/.bashrc`) so it's always available.
+>
+> If using **Ollama**, no API key is needed—just ensure Ollama is running locally.
+
+### 3. Index Your Code
+
+```bash
+# Index directories recursively (recommended)
+nexus-index src/ -r
+
+# Index multiple directories
 nexus-index src/ docs/ -r
 
-# Index specific files
+# Index specific files (no -r needed)
 nexus-index main.py utils.py
 ```
 
-### 3. Configure Your AI Agent
+> **Note**: The `-r` flag is required to recursively index subdirectories. Without it, only files directly inside the given folder are indexed.
+
+### 4. Configure Your AI Agent
 
 Add to your MCP client configuration (e.g., Claude Desktop):
 
@@ -66,6 +83,22 @@ Add to your MCP client configuration (e.g., Claude Desktop):
   }
 }
 ```
+
+### 5. Verify Your Setup
+
+**Check indexed content** via CLI:
+```bash
+nexus-status
+```
+
+**Test in your AI agent** — copy and paste this prompt:
+
+```
+Search the Nexus-Dev knowledge base for functions related to "embeddings" 
+and show me the project statistics.
+```
+
+If the AI uses the `search_code` or `get_project_context` tools and returns results, your setup is complete! 🎉
 
 ## MCP Tools
 
@@ -230,24 +263,134 @@ sequenceDiagram
     MCP-->>AI: Formatted results
 ```
 
-## Development
+## Development Setup
+
+Since Nexus-Dev is not yet published to PyPI/Docker Hub, developers must build from source.
+
+### Option 1: Local Python Installation (Recommended for Development)
 
 ```bash
 # Clone repository
 git clone https://github.com/mmornati/nexus-dev.git
 cd nexus-dev
 
-# Setup environment
-pyenv install 3.13
-pyenv local 3.13
-python -m venv .venv
+# Option A: Use the Makefile (handles pyenv + venv)
+make setup
 source .venv/bin/activate
 
-# Install dependencies
-pip install -e ".[dev]"
+# Option B: Manual setup
+pyenv install 3.13       # or use your preferred Python 3.13+ manager
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"  # Editable install with dev dependencies
+```
 
-# Run tests
-pytest tests/ -v
+After installation, CLI commands are available:
+
+```bash
+nexus-init --help        # Initialize a project
+nexus-index --help       # Index files
+nexus-dev                # Run MCP server
+```
+
+### Option 2: Docker Build
+
+```bash
+# Build the image
+make docker-build
+# or: docker build -t nexus-dev:latest .
+
+# Run with volume mounts
+docker run -it --rm \
+    -v /path/to/your-project:/workspace:ro \
+    -v nexus-dev-data:/data/nexus-dev \
+    -e OPENAI_API_KEY=$OPENAI_API_KEY \
+    nexus-dev:latest
+
+# Or use Makefile shortcuts
+make docker-run          # Run container
+make docker-logs         # View logs
+make docker-stop         # Stop container
+```
+
+### Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Full dev environment setup (pyenv + venv + deps) |
+| `make install-dev` | Install package with dev dependencies |
+| `make lint` | Run ruff linter |
+| `make format` | Format code + auto-fix lint issues |
+| `make check` | Run all CI checks (lint + format + type-check) |
+| `make test` | Run tests |
+| `make test-cov` | Run tests with coverage report |
+| `make docker-build` | Build Docker image |
+| `make docker-run` | Run Docker container |
+| `make help` | Show all available commands |
+
+### MCP Configuration (Development Mode)
+
+Configure your AI agent to use the locally-built server. **This single configuration works for ALL your indexed projects!**
+
+**For Claude Desktop / Cursor / Windsurf:**
+
+```json
+{
+  "mcpServers": {
+    "nexus-dev": {
+      "command": "/path/to/nexus-dev/.venv/bin/python",
+      "args": ["-m", "nexus_dev.server"],
+      "env": {
+        "OPENAI_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+> **How it works**: The server now defaults to searching **all indexed projects** when no specific project context is active. You don't need to configure `cwd` or create separate MCP entries for each project.
+
+> **Tip**: If `OPENAI_API_KEY` is already in your shell profile (`.zshrc`, `.bashrc`), some clients inherit it automatically. Check your client's documentation.
+
+**Using Docker:**
+
+The `/workspace` mount is the server's working directory. It looks for `nexus_config.json` and `.nexus/lessons/` there. Mount your project (or parent directory) to `/workspace`:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dev": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/path/to/project:/workspace:ro",
+        "-v", "nexus-dev-data:/data/nexus-dev",
+        "-e", "OPENAI_API_KEY",
+        "nexus-dev:latest"
+      ]
+    }
+  }
+}
+```
+
+**Multi-Project Setup:**
+
+For multiple projects, you have two options:
+
+1. **Mount parent directory** containing all projects:
+   ```json
+   "-v", "/Users/you/Projects:/workspace:ro"
+   ```
+   Then index paths like `/workspace/project-a/src/`, `/workspace/project-b/src/`. Each project needs its own `nexus_config.json` with a unique `project_id`.
+
+2. **Use local Python install** (recommended): MCP clients automatically set the working directory to the project root, so no path configuration is needed.
+
+### Running Tests
+
+```bash
+make test              # Run all tests
+make test-cov          # Run with coverage report
+pytest tests/unit/ -v  # Run specific test directory
 ```
 
 ## Adding Language Support

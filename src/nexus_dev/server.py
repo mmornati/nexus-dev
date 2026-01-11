@@ -29,16 +29,19 @@ _embedder: EmbeddingProvider | None = None
 _database: NexusDatabase | None = None
 
 
-def _get_config() -> NexusConfig:
-    """Get or load configuration."""
+def _get_config() -> NexusConfig | None:
+    """Get or load configuration.
+
+    Returns None if no nexus_config.json exists in cwd.
+    This allows the MCP server to work without a project-specific config,
+    enabling cross-project searches.
+    """
     global _config
     if _config is None:
         config_path = Path.cwd() / "nexus_config.json"
         if config_path.exists():
             _config = NexusConfig.load(config_path)
-        else:
-            # Create default config
-            _config = NexusConfig.create_new("default-project")
+        # Don't create default - None means "all projects"
     return _config
 
 
@@ -47,6 +50,9 @@ def _get_embedder() -> EmbeddingProvider:
     global _embedder
     if _embedder is None:
         config = _get_config()
+        if config is None:
+            # Create minimal config for embeddings only
+            config = NexusConfig.create_new("default")
         _embedder = create_embedder(config)
     return _embedder
 
@@ -56,6 +62,9 @@ def _get_database() -> NexusDatabase:
     global _database
     if _database is None:
         config = _get_config()
+        if config is None:
+            # Create minimal config for database access
+            config = NexusConfig.create_new("default")
         embedder = _get_embedder()
         _database = NexusDatabase(config, embedder)
         _database.connect()
@@ -144,11 +153,10 @@ async def search_knowledge(
     Returns:
         Formatted search results with file paths, content, and relevance info.
     """
-    config = _get_config()
     database = _get_database()
 
-    # Use current project if no specific project requested
-    effective_project_id = project_id or config.project_id
+    # Only filter by project if explicitly specified
+    # None = search across all projects
 
     # Clamp limit
     limit = min(max(1, limit), 20)
@@ -166,7 +174,7 @@ async def search_knowledge(
     try:
         results = await database.search(
             query=query,
-            project_id=effective_project_id if project_id is not None else None,
+            project_id=project_id,  # None = all projects
             doc_type=doc_type_filter,
             limit=limit,
         )
@@ -222,16 +230,13 @@ async def search_docs(
     Returns:
         Formatted documentation search results.
     """
-    config = _get_config()
     database = _get_database()
-
-    effective_project_id = project_id or config.project_id
     limit = min(max(1, limit), 20)
 
     try:
         results = await database.search(
             query=query,
-            project_id=effective_project_id if project_id is not None else None,
+            project_id=project_id,  # None = all projects
             doc_type=DocumentType.DOCUMENTATION,
             limit=limit,
         )
@@ -282,16 +287,13 @@ async def search_lessons(
     Returns:
         Relevant lessons with problems and solutions.
     """
-    config = _get_config()
     database = _get_database()
-
-    effective_project_id = project_id or config.project_id
     limit = min(max(1, limit), 20)
 
     try:
         results = await database.search(
             query=query,
-            project_id=effective_project_id if project_id is not None else None,
+            project_id=project_id,  # None = all projects (cross-project learning)
             doc_type=DocumentType.LESSON,
             limit=limit,
         )
@@ -342,16 +344,13 @@ async def search_code(
     Returns:
         Relevant code snippets with file locations.
     """
-    config = _get_config()
     database = _get_database()
-
-    effective_project_id = project_id or config.project_id
     limit = min(max(1, limit), 20)
 
     try:
         results = await database.search(
             query=query,
-            project_id=effective_project_id if project_id is not None else None,
+            project_id=project_id,  # None = all projects
             doc_type=DocumentType.CODE,
             limit=limit,
         )
@@ -410,7 +409,15 @@ async def index_file(
         Summary of indexed chunks including count and types.
     """
     config = _get_config()
-    effective_project_id = project_id or config.project_id
+    if project_id:
+        effective_project_id = project_id
+    elif config:
+        effective_project_id = config.project_id
+    else:
+        return (
+            "Error: No project_id specified and no nexus_config.json found. "
+            "Please provide project_id or run 'nexus-init' first."
+        )
 
     # Resolve file path
     path = Path(file_path)
@@ -491,7 +498,15 @@ async def record_lesson(
         Confirmation with lesson ID and a summary.
     """
     config = _get_config()
-    effective_project_id = project_id or config.project_id
+    if project_id:
+        effective_project_id = project_id
+    elif config:
+        effective_project_id = config.project_id
+    else:
+        return (
+            "Error: No project_id specified and no nexus_config.json found. "
+            "Please provide project_id or run 'nexus-init' first."
+        )
 
     # Create lesson text
     lesson_parts = [
@@ -575,21 +590,33 @@ async def get_project_context(
     """
     config = _get_config()
     database = _get_database()
-    effective_project_id = project_id or config.project_id
+
+    # If no project specified and no config, show stats for all projects
+    if project_id is None and config is None:
+        project_name = "All Projects"
+        effective_project_id = None  # Will get stats for all
+    elif project_id is not None:
+        project_name = f"Project {project_id[:8]}..."
+        effective_project_id = project_id
+    else:
+        # config is guaranteed not None here (checked at line 595)
+        assert config is not None
+        project_name = config.project_name
+        effective_project_id = config.project_id
 
     limit = min(max(1, limit), 50)
 
     try:
-        # Get project statistics
+        # Get project statistics (None = all projects)
         stats = await database.get_project_stats(effective_project_id)
 
-        # Get recent lessons
+        # Get recent lessons (None = all projects)
         recent_lessons = await database.get_recent_lessons(effective_project_id, limit)
 
         # Format output
         output_parts = [
-            f"## Project Context: {config.project_name}",
-            f"**Project ID:** `{effective_project_id}`",
+            f"## Project Context: {project_name}",
+            f"**Project ID:** `{effective_project_id or 'all'}`",
             "",
             "### Statistics",
             f"- Total indexed chunks: {stats.get('total', 0)}",

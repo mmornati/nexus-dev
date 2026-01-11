@@ -334,11 +334,11 @@ class NexusDatabase:
 
         return count_before
 
-    async def get_project_stats(self, project_id: str) -> dict[str, int]:
-        """Get statistics for a project.
+    async def get_project_stats(self, project_id: str | None = None) -> dict[str, int]:
+        """Get statistics for a project or all projects.
 
         Args:
-            project_id: Project ID.
+            project_id: Project ID. If None, returns stats for all projects.
 
         Returns:
             Dictionary with counts by document type.
@@ -346,7 +346,10 @@ class NexusDatabase:
         table = self._ensure_connected()
 
         try:
-            df = table.search().where(f"project_id = '{project_id}'").to_pandas()
+            query = table.search()
+            if project_id:
+                query = query.where(f"project_id = '{project_id}'")
+            df = query.to_pandas()
             stats = df.groupby("doc_type").size().to_dict()
             stats["total"] = len(df)
             return stats
