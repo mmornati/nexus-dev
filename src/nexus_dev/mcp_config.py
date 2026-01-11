@@ -62,6 +62,14 @@ class MCPConfig:
 
         return cls(version=data["version"], servers=servers)
 
+    def get_active_servers(self) -> list[MCPServerConfig]:
+        """Get a list of enabled MCP server configurations.
+
+        Returns:
+            List of enabled MCPServerConfig instances.
+        """
+        return [s for s in self.servers.values() if s.enabled]
+
     @staticmethod
     def validate(data: dict[str, Any]) -> None:
         """Validate configuration data against the JSON schema.

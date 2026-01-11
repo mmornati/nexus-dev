@@ -67,3 +67,21 @@ def test_mcp_server_config_defaults():
     assert server.args == []
     assert server.env == {}
     assert server.enabled is True
+
+
+def test_mcp_config_get_active_servers(valid_config_data):
+    # Add a disabled server
+    valid_config_data["servers"]["disabled-server"] = {
+        "command": "echo",
+        "enabled": False,
+    }
+    config = MCPConfig(
+        version=valid_config_data["version"],
+        servers={
+            name: MCPServerConfig(**cfg) for name, cfg in valid_config_data["servers"].items()
+        },
+    )
+
+    active_servers = config.get_active_servers()
+    assert len(active_servers) == 1
+    assert active_servers[0].command == "python"
