@@ -4,20 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urljoin
 
-import anyio
 import httpx
-from anyio.abc import TaskStatus
-from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
-from mcp import ClientSession, types
+from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.shared.message import SessionMessage
+from mcp.client.streamable_http import streamable_http_client
 
 from ..mcp_config import MCPServerConfig
 
@@ -28,134 +22,6 @@ class MCPConnectionError(Exception):
     """Failed to connect to MCP server."""
 
     pass
-
-
-@asynccontextmanager
-async def github_sse_client(
-    url: str,
-    headers: dict[str, Any] | None = None,
-    timeout: float = 5,
-    sse_read_timeout: float = 60 * 5,
-    auth: httpx.Auth | None = None,
-) -> AsyncIterator[tuple[MemoryObjectReceiveStream[Any], MemoryObjectSendStream[Any]]]:
-    """Custom SSE client for GitHub that uses POST with ping payload.
-
-    This client avoids aconnect_sse because api.githubcopilot.com returns 400
-    if 'Accept: text/event-stream' is present in the initial POST.
-    """
-    read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
-    write_stream, write_stream_reader = anyio.create_memory_object_stream(100)
-
-    # Prepare headers, ensuring Accept is NOT text/event-stream
-    effective_headers = (headers or {}).copy()
-    effective_headers["Accept"] = "*/*"
-    if "User-Agent" not in effective_headers:
-        effective_headers["User-Agent"] = "nexus-dev/1.0"
-
-    async with anyio.create_task_group() as tg:
-        try:
-            async with (
-                httpx.AsyncClient(
-                    http2=True,
-                    headers=effective_headers,
-                    auth=auth,
-                    timeout=httpx.Timeout(timeout, read=sse_read_timeout),
-                ) as client,
-                client.stream(
-                    "POST",
-                    url,
-                    json={"jsonrpc": "2.0", "method": "ping", "id": 999},
-                ) as response,
-            ):
-                response.raise_for_status()
-                from httpx_sse import EventSource
-
-                event_source = EventSource(response)
-
-                async def sse_reader(
-                    task_status: TaskStatus[str] = anyio.TASK_STATUS_IGNORED,
-                ) -> None:
-                    started = False
-                    try:
-                        async for sse in event_source.aiter_sse():
-                            if not started and sse.event != "endpoint":
-                                task_status.started(url)
-                                started = True
-
-                            match sse.event:
-                                case "endpoint":
-                                    endpoint_url = urljoin(url, sse.data)
-                                    if not started:
-                                        task_status.started(endpoint_url)
-                                        started = True
-                                case "message":
-                                    if not sse.data:
-                                        continue
-                                    msg = types.JSONRPCMessage.model_validate_json(sse.data)
-                                    await read_stream_writer.send(SessionMessage(msg))
-                    except anyio.get_cancelled_exc_class():
-                        pass
-                    except Exception as exc:
-                        if not started:
-                            task_status.started(url)
-                            started = True
-                        await read_stream_writer.send(exc)
-                    finally:
-                        if not started:
-                            task_status.started(url)
-
-                async def post_writer(endpoint_url: str) -> None:
-                    try:
-                        # Use a separate client for POSTs to avoid potential multiplexing issues
-                        # with the long-lived SSE stream.
-                        async with (
-                            httpx.AsyncClient(
-                                http2=True,
-                                headers=effective_headers,
-                                auth=auth,
-                                timeout=httpx.Timeout(timeout),
-                            ) as post_client,
-                            write_stream_reader,
-                        ):
-                            async for session_message in write_stream_reader:
-                                resp = await post_client.post(
-                                    endpoint_url,
-                                    json=session_message.message.model_dump(
-                                        by_alias=True, mode="json", exclude_none=True
-                                    ),
-                                )
-                                resp.raise_for_status()
-
-                                # GitHub hybrid behavior: response may be in the POST body
-                                # formatted as SSE: data: {...}
-                                body = resp.text
-                                if "data: " in body:
-                                    for line in body.splitlines():
-                                        if line.startswith("data: "):
-                                            data = line[len("data: ") :].strip()
-                                            if data:
-                                                msg = types.JSONRPCMessage.model_validate_json(data)
-                                                await read_stream_writer.send(SessionMessage(msg))
-                    except anyio.get_cancelled_exc_class():
-                        pass
-                    except Exception as exc:
-                        logger.error("Error in post_writer for %s: %s", endpoint_url, exc)
-                    finally:
-                        await write_stream.aclose()
-
-                with anyio.move_on_after(5.0):
-                    endpoint_url = await tg.start(sse_reader)
-
-                if endpoint_url is None:
-                    endpoint_url = url
-
-                tg.start_soon(post_writer, endpoint_url)
-                yield read_stream, write_stream
-        finally:
-            # Cancel all background tasks in the group before exiting
-            tg.cancel_scope.cancel()
-            await read_stream_writer.aclose()
-            await write_stream.aclose()
 
 
 class MCPTimeoutError(Exception):
@@ -191,78 +57,120 @@ class MCPConnection:
     async def connect(self) -> ClientSession:
         """Get or create connection with retry logic."""
         async with self._lock:
-            # Check if existing session is still alive
-            if self.session is not None:
+            # For HTTP transport, always create fresh connections to avoid
+            # anyio TaskGroup conflicts with streamable_http_client
+            if self.config.transport == "http":
+                if self.session is not None:
+                    logger.debug("[%s] Cleaning up previous HTTP session", self.name)
+                    await self._cleanup()
+            elif self.session is not None:
+                # Check if existing session is still alive (non-HTTP transports only)
                 try:
+                    logger.debug("[%s] Pinging existing session", self.name)
                     await self.session.send_ping()
+                    logger.debug("[%s] Existing session is alive", self.name)
                     return self.session
-                except Exception:
-                    logger.warning("Connection to %s lost, reconnecting...", self.name)
+                except Exception as e:
+                    logger.warning(
+                        "[%s] Connection lost or ping failed, reconnecting... Error: %s",
+                        self.name,
+                        e,
+                    )
                     await self._cleanup()
 
             # Try to connect with retries
             last_error: Exception | None = None
             for attempt in range(self.max_retries):
                 try:
+                    logger.info(
+                        "[%s] Connection attempt %d/%d", self.name, attempt + 1, self.max_retries
+                    )
                     return await self._do_connect()
                 except Exception as e:
                     last_error = e
                     logger.warning(
-                        "Connection attempt %d/%d to %s failed: %s",
+                        "[%s] Connection attempt %d/%d failed: %s",
+                        self.name,
                         attempt + 1,
                         self.max_retries,
-                        self.name,
                         e,
                     )
                     if attempt < self.max_retries - 1:
                         delay = self.retry_delay * (2**attempt)  # Exponential backoff
+                        logger.debug("[%s] Retrying in %.1fs...", self.name, delay)
                         await asyncio.sleep(delay)
 
+            logger.error("[%s] All connection attempts failed", self.name)
             raise MCPConnectionError(
                 f"Failed to connect to {self.name} after {self.max_retries} attempts"
             ) from last_error
 
     async def _do_connect(self) -> ClientSession:
-        """Perform actual connection to MCP server."""
+        """Perform actual connection to MCP server.
+
+        Note: We don't use asyncio.wait_for() here because anyio-based transports
+        (like streamable_http_client) use their own cancel scopes which conflict
+        with asyncio's cancellation. The httpx client has its own timeout configured.
+        """
+        logger.debug("[%s] Connecting...", self.name)
         try:
-            return await asyncio.wait_for(
-                self._do_connect_impl(),
-                timeout=self.connect_timeout,
-            )
-        except TimeoutError as e:
-            raise MCPConnectionError(
-                f"Connection to {self.name} timed out after {self.connect_timeout}s"
-            ) from e
+            result = await self._do_connect_impl()
+            logger.info("[%s] Connection successful", self.name)
+            return result
+        except Exception as e:
+            logger.error("[%s] Connection failed: %s", self.name, e)
+            raise
 
     async def _do_connect_impl(self) -> ClientSession:
-        """Internal connection implementation."""
-        if self.config.transport in ("sse", "http"):
-            if not self.config.url:
-                raise ValueError(
-                    f"URL required for {self.config.transport.upper()} transport: {self.name}"
-                )
+        """Internal connection implementation for SSE and stdio transports.
 
-            client_factory = github_sse_client if self.config.transport == "http" else sse_client
-            transport_cm = client_factory(
+        Note: HTTP transport does NOT use this method - it uses _invoke_http instead
+        to properly handle anyio's structured concurrency requirements.
+        """
+        if self.config.transport == "sse":
+            if not self.config.url:
+                raise ValueError(f"URL required for SSE transport: {self.name}")
+
+            logger.debug("[%s] Using SSE transport to %s", self.name, self.config.url)
+            transport_cm = sse_client(
                 url=self.config.url,
                 headers=self.config.headers,
             )
-        else:
+        elif self.config.transport == "stdio":
+            logger.debug(
+                "[%s] Using stdio transport with command: %s", self.name, self.config.command
+            )
             server_params = StdioServerParameters(
                 command=self.config.command,  # type: ignore
                 args=self.config.args,
                 env=self.config.env,
             )
             transport_cm = stdio_client(server_params)
+        else:
+            raise ValueError(f"Unsupported transport for pooling: {self.config.transport}")
+
+        logger.debug("[%s] Entering transport context manager", self.name)
         read, write = await transport_cm.__aenter__()
         self._cleanup_stack.append(transport_cm)
 
+        logger.debug("[%s] Creating client session", self.name)
         session_cm = ClientSession(read, write)
         self.session = await session_cm.__aenter__()
         self._cleanup_stack.append(session_cm)
 
+        logger.debug("[%s] Initializing session", self.name)
         await self.session.initialize()
-        logger.info("Connected to MCP server: %s", self.name)
+        logger.info("[%s] Connected to MCP server successfully", self.name)
+        return self.session
+
+        logger.debug("[%s] Creating client session", self.name)
+        session_cm = ClientSession(read, write)
+        self.session = await session_cm.__aenter__()
+        self._cleanup_stack.append(session_cm)
+
+        logger.debug("[%s] Initializing session", self.name)
+        await self.session.initialize()
+        logger.info("[%s] Connected to MCP server successfully", self.name)
         return self.session
 
     async def _cleanup(self) -> None:
@@ -281,8 +189,61 @@ class MCPConnection:
             await self._cleanup()
             logger.info("Disconnected from MCP server: %s", self.name)
 
+    async def _invoke_http(self, tool: str, arguments: dict[str, Any]) -> Any:
+        """Invoke a tool using HTTP transport with proper context manager handling.
+
+        For HTTP transport, we must use proper async with blocks because
+        streamable_http_client uses anyio TaskGroups internally that conflict
+        with manual __aenter__/__aexit__ calls.
+        """
+        logger.debug("[%s] Using HTTP transport for tool: %s", self.name, tool)
+
+        async with (
+            httpx.AsyncClient(
+                headers=self.config.headers,
+                timeout=httpx.Timeout(self.config.timeout),
+            ) as http_client,
+            streamable_http_client(
+                url=self.config.url,
+                http_client=http_client,
+                terminate_on_close=True,
+            ) as (read, write, _),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            logger.debug("[%s] HTTP session initialized, calling tool: %s", self.name, tool)
+            result = await session.call_tool(tool, arguments)
+            logger.debug("[%s] Tool call completed: %s", self.name, tool)
+            return result
+
+    async def _invoke_impl(self, tool: str, arguments: dict[str, Any]) -> Any:
+        """Internal implementation of tool invocation.
+
+        Args:
+            tool: Tool name to invoke.
+            arguments: Tool arguments.
+
+        Returns:
+            Tool execution result.
+        """
+        # For HTTP transport, use dedicated method with proper async with handling
+        if self.config.transport == "http":
+            return await self._invoke_http(tool, arguments)
+
+        # For other transports (stdio, sse), use connection pooling
+        logger.debug("[%s] Getting connection for tool: %s", self.name, tool)
+        session = await self.connect()
+        logger.debug("[%s] Connection established, calling tool: %s", self.name, tool)
+        result = await session.call_tool(tool, arguments)
+        logger.debug("[%s] Tool call completed: %s", self.name, tool)
+        return result
+
     async def invoke_with_timeout(self, tool: str, arguments: dict[str, Any]) -> Any:
         """Invoke a tool with timeout protection.
+
+        Note: We don't use asyncio.wait_for() here because anyio-based transports
+        (like streamable_http_client) use their own cancel scopes which conflict
+        with asyncio's cancellation. The httpx client has its own timeout configured.
 
         Args:
             tool: Tool name to invoke.
@@ -295,20 +256,19 @@ class MCPConnection:
             MCPTimeoutError: If tool invocation times out.
             MCPConnectionError: If connection fails.
         """
-        session = await self.connect()
+        logger.info("[%s] Starting invoke_tool: %s with args: %s", self.name, tool, arguments)
+
         try:
-            return await asyncio.wait_for(
-                session.call_tool(tool, arguments),
-                timeout=self.timeout,
-            )
-        except TimeoutError as e:
-            logger.error(
-                "Tool %s on %s timed out after %.1fs",
-                tool,
-                self.name,
-                self.timeout,
-            )
-            raise MCPTimeoutError(f"Tool '{tool}' timed out after {self.timeout}s") from e
+            result = await self._invoke_impl(tool, arguments)
+            logger.info("[%s] Tool invocation successful: %s", self.name, tool)
+            return result
+        except Exception as e:
+            logger.error("[%s] Tool invocation failed: %s - %s", self.name, tool, e)
+            # Cleanup on any error (only for non-HTTP transports)
+            if self.config.transport != "http":
+                async with self._lock:
+                    await self._cleanup()
+            raise
 
 
 class ConnectionManager:

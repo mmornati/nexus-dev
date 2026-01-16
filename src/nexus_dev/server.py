@@ -10,6 +10,7 @@ This module implements the MCP server using FastMCP, exposing tools for:
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,8 @@ from .mcp_config import MCPConfig
 
 # Initialize FastMCP server
 mcp = FastMCP("nexus-dev")
+
+logger = logging.getLogger(__name__)
 
 # Global state (initialized on startup)
 _config: NexusConfig | None = None
@@ -470,16 +473,15 @@ async def search_tools(
         doc_type=DocumentType.TOOL,
         limit=limit,
     )
-    import sys
-
-    print(f"DEBUG: Searching tools with query='{query}'", file=sys.stderr)
+    logger.debug("[%s] Searching tools with query='%s'", "nexus-dev", query)
     try:
-        print(f"DEBUG: DB Path in use: {database.config.get_db_path()}", file=sys.stderr)
+        logger.debug("[%s] DB Path in use: %s", "nexus-dev", database.config.get_db_path())
     except Exception as e:
-        print(f"DEBUG: Could not print DB path: {e}", file=sys.stderr)
-    print(f"DEBUG: Results found: {len(results)}", file=sys.stderr)
+        logger.debug("[%s] Could not print DB path: %s", "nexus-dev", e)
+
+    logger.debug("[%s] Results found: %d", "nexus-dev", len(results))
     if results:
-        print(f"DEBUG: First result: {results[0].name} ({results[0].score})", file=sys.stderr)
+        logger.debug("[%s] First result: %s (%s)", "nexus-dev", results[0].name, results[0].score)
 
     # Filter by server if specified
     if server and results:
@@ -531,8 +533,8 @@ async def list_servers() -> str:
         for name in sorted(active_names):
             server = mcp_config.servers[name]
             details = ""
-            if server.transport == "sse":
-                details = f"SSE: {server.url}"
+            if server.transport in ("sse", "http"):
+                details = f"{server.transport.upper()}: {server.url}"
             else:
                 details = f"Command: {server.command} {' '.join(server.args)}"
             output.append(f"- **{name}**: `{details}`")
@@ -1002,16 +1004,87 @@ async def get_project_context(
 
 def main() -> None:
     """Run the MCP server."""
+    import argparse
+    import signal
+    import sys
+    from types import FrameType
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Nexus-Dev MCP Server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse"],
+        default="stdio",
+        help="Transport mode: stdio (default) or sse for Docker/network deployment",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port for SSE transport (default: 8080)",
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host for SSE transport (default: 0.0.0.0)",
+    )
+    args = parser.parse_args()
+
+    # Configure logging to always use stderr and a debug file
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Stderr handler
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(logging.Formatter(log_format))
+    root_logger.addHandler(stderr_handler)
+
+    # File handler for persistent debugging
+    try:
+        file_handler = logging.FileHandler("/tmp/nexus-dev-debug.log")
+        file_handler.setFormatter(logging.Formatter(log_format))
+        file_handler.setLevel(logging.DEBUG)
+        root_logger.addHandler(file_handler)
+    except Exception:
+        pass  # Fallback if /tmp is not writable
+
+    root_logger.setLevel(logging.DEBUG)
+
+    # Also ensure the module-specific logger is at INFO
+    logger.setLevel(logging.DEBUG)
+
+    def handle_signal(sig: int, frame: FrameType | None) -> None:
+        logger.info("Received signal %s, shutting down...", sig)
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
     # Initialize on startup
     try:
+        logger.info("Starting Nexus-Dev MCP server...")
         _get_config()
         _get_database()
         _get_mcp_config()
-    except Exception:
-        pass  # Database or config may not be ready yet
 
-    # Run server with stdio transport
-    mcp.run(transport="stdio")
+        # Run server with selected transport
+        if args.transport == "sse":
+            logger.info(
+                "Server initialization complete, running SSE transport on %s:%d",
+                args.host,
+                args.port,
+            )
+            mcp.run(transport="sse", host=args.host, port=args.port)
+        else:
+            logger.info("Server initialization complete, running stdio transport")
+            mcp.run(transport="stdio")
+    except Exception as e:
+        logger.critical("Fatal error in MCP server: %s", e, exc_info=True)
+        sys.exit(1)
+    finally:
+        logger.info("MCP server shutdown complete")
 
 
 if __name__ == "__main__":

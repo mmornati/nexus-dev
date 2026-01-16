@@ -1,24 +1,19 @@
 services:
   nexus-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: nexus-dev
+    ports:
+      - "8080:8080"
     volumes:
-      # Mount your project directory
-      - ./:/workspace:ro
-      # Persist LanceDB data
+      # Mount your project workspace
+      - .:/workspace:ro
+      # Persist the database across restarts
       - nexus-data:/data/nexus-dev
-      # Mount OpenAI API key (if using OpenAI embeddings)
-      # - ~/.openai:/root/.openai:ro
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - NEXUS_DB_PATH=/data/nexus-dev/db
-    # For MCP stdio transport, use stdin_open and tty
-    stdin_open: true
-    tty: true
+      # Mount MCP config if you have one
+      - ./.nexus:/workspace/.nexus:ro
     restart: unless-stopped
+    environment:
+      - NEXUS_LOG_LEVEL=INFO
 
 volumes:
   nexus-data:
-    driver: local

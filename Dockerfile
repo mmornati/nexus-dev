@@ -27,10 +27,14 @@ RUN mkdir -p /data/nexus-dev
 # Set environment variables
 ENV NEXUS_DB_PATH=/data/nexus-dev/db
 
+# Expose port for SSE transport
+EXPOSE 8080
+
 # Expose the working directory for config mounting
 VOLUME ["/workspace", "/data/nexus-dev"]
 
 WORKDIR /workspace
 
-# Default command runs MCP server via stdio
+# Default command runs MCP server via SSE transport for Docker networking
 ENTRYPOINT ["python", "-m", "nexus_dev.server"]
+CMD ["--transport", "sse", "--host", "0.0.0.0", "--port", "8080"]
