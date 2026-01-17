@@ -65,7 +65,6 @@ class LLMConfig(BaseModel):
     max_tokens: int = Field(default=4000, ge=100, le=32000)
 
 
-
 class AgentConfig(BaseModel):
     """Complete agent configuration.
 

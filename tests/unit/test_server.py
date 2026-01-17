@@ -851,6 +851,7 @@ class TestListServers:
 class TestMain:
     """Test suite for main entry point."""
 
+    @patch("sys.argv", ["nexus-dev"])
     @patch("nexus_dev.server.mcp")
     @patch("nexus_dev.server._get_mcp_config")
     @patch("nexus_dev.server._get_database")
@@ -868,6 +869,7 @@ class TestMain:
         mock_get_mcp_config.assert_called_once()
         mock_mcp.run.assert_called_once_with(transport="stdio")
 
+    @patch("sys.argv", ["nexus-dev"])
     @patch("nexus_dev.server.mcp")
     @patch("nexus_dev.server._get_mcp_config")
     @patch("nexus_dev.server._get_database")
@@ -880,10 +882,13 @@ class TestMain:
 
         mock_get_config.side_effect = Exception("Init error")
 
-        main()
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+        assert exc.value.code == 1
 
         mock_get_config.assert_called_once()
-        mock_mcp.run.assert_called_once_with(transport="stdio")
+        mock_mcp.run.assert_not_called()
 
 
 class TestGetToolSchema:

@@ -236,7 +236,7 @@ class TestMCPConnectionTimeout:
         with pytest.raises(MCPConnectionError) as excinfo:
             await connection.connect()
 
-        assert "after 3 attempts" in str(excinfo.value)
+        assert "due to timeout after 0.05s" in str(excinfo.value)
 
 
 class TestMCPConnectionLogging:
@@ -257,8 +257,8 @@ class TestMCPConnectionLogging:
         with caplog.at_level(logging.WARNING), pytest.raises(MCPConnectionError):
             await conn.connect()
 
-        assert "Connection attempt 1/2 to test-server failed" in caplog.text
-        assert "Connection attempt 2/2 to test-server failed" in caplog.text
+        assert "[test-server] Connection attempt 1/2 failed" in caplog.text
+        assert "[test-server] Connection attempt 2/2 failed" in caplog.text
 
     @patch("nexus_dev.gateway.connection_manager.stdio_client")
     @patch("nexus_dev.gateway.connection_manager.ClientSession")
@@ -279,7 +279,7 @@ class TestMCPConnectionLogging:
         with caplog.at_level(logging.INFO):
             await conn.connect()
 
-        assert "Connected to MCP server: test-server" in caplog.text
+        assert "[test-server] Connection successful" in caplog.text
 
     @pytest.mark.asyncio
     async def test_logs_warning_on_lost_connection(self, mock_config, caplog):
@@ -292,7 +292,7 @@ class TestMCPConnectionLogging:
         with caplog.at_level(logging.WARNING), pytest.raises(MCPConnectionError):
             await conn.connect()
 
-        assert "Connection to test-server lost, reconnecting" in caplog.text
+        assert "[test-server] Connection lost or ping failed, reconnecting" in caplog.text
 
 
 class TestConnectionManager:

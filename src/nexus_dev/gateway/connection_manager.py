@@ -78,27 +78,37 @@ class MCPConnection:
                     )
                     await self._cleanup()
 
-            # Try to connect with retries
+            # Try to connect with retries within total connect_timeout
             last_error: Exception | None = None
-            for attempt in range(self.max_retries):
-                try:
-                    logger.info(
-                        "[%s] Connection attempt %d/%d", self.name, attempt + 1, self.max_retries
-                    )
-                    return await self._do_connect()
-                except Exception as e:
-                    last_error = e
-                    logger.warning(
-                        "[%s] Connection attempt %d/%d failed: %s",
-                        self.name,
-                        attempt + 1,
-                        self.max_retries,
-                        e,
-                    )
-                    if attempt < self.max_retries - 1:
-                        delay = self.retry_delay * (2**attempt)  # Exponential backoff
-                        logger.debug("[%s] Retrying in %.1fs...", self.name, delay)
-                        await asyncio.sleep(delay)
+            try:
+                async with asyncio.timeout(self.connect_timeout):
+                    for attempt in range(self.max_retries):
+                        try:
+                            logger.info(
+                                "[%s] Connection attempt %d/%d",
+                                self.name,
+                                attempt + 1,
+                                self.max_retries,
+                            )
+                            return await self._do_connect()
+                        except Exception as e:
+                            last_error = e
+                            logger.warning(
+                                "[%s] Connection attempt %d/%d failed: %s",
+                                self.name,
+                                attempt + 1,
+                                self.max_retries,
+                                e,
+                            )
+                            if attempt < self.max_retries - 1:
+                                delay = self.retry_delay * (2**attempt)
+                                logger.debug("[%s] Retrying in %.1fs...", self.name, delay)
+                                await asyncio.sleep(delay)
+            except asyncio.TimeoutError:
+                logger.error("[%s] Connection timed out after %.1fs", self.name, self.connect_timeout)
+                raise MCPConnectionError(
+                    f"Failed to connect to {self.name} due to timeout after {self.connect_timeout}s"
+                ) from last_error
 
             logger.error("[%s] All connection attempts failed", self.name)
             raise MCPConnectionError(
@@ -198,6 +208,9 @@ class MCPConnection:
         """
         logger.debug("[%s] Using HTTP transport for tool: %s", self.name, tool)
 
+        if not self.config.url:
+            raise ValueError(f"URL required for HTTP transport: {self.name}")
+
         async with (
             httpx.AsyncClient(
                 headers=self.config.headers,
@@ -259,9 +272,19 @@ class MCPConnection:
         logger.info("[%s] Starting invoke_tool: %s with args: %s", self.name, tool, arguments)
 
         try:
-            result = await self._invoke_impl(tool, arguments)
+            if self.config.transport == "http":
+                # HTTP has its own timeout in httpx
+                result = await self._invoke_impl(tool, arguments)
+            else:
+                # Use asyncio.wait_for for stdio/sse as they don't have built-in timeout
+                result = await asyncio.wait_for(
+                    self._invoke_impl(tool, arguments), timeout=self.timeout
+                )
             logger.info("[%s] Tool invocation successful: %s", self.name, tool)
             return result
+        except asyncio.TimeoutError:
+            logger.error("[%s] Tool invocation timed out: %s", self.name, tool)
+            raise MCPTimeoutError(f"Tool '{tool}' timed out after {self.timeout}s")
         except Exception as e:
             logger.error("[%s] Tool invocation failed: %s - %s", self.name, tool, e)
             # Cleanup on any error (only for non-HTTP transports)

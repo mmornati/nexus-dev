@@ -1219,7 +1219,8 @@ def agent_init_command(
     if not re.match(r"^[a-z][a-z0-9_]*$", agent_name):
         click.echo(f"❌ Invalid agent name: {agent_name}", err=True)
         click.echo(
-            "   Name must start with a letter and contain only lowercase letters, numbers, and underscores."
+            "   Name must start with a letter and contain only lowercase letters, "
+            "numbers, and underscores."
         )
         return
 
@@ -1238,9 +1239,7 @@ def agent_init_command(
         # Customize the template
         config["name"] = agent_name
         config["display_name"] = name.replace("_", " ").title()
-        config["description"] = (
-            f"Delegate tasks to the {name.replace('_', ' ').title()} agent."
-        )
+        config["description"] = f"Delegate tasks to the {name.replace('_', ' ').title()} agent."
 
         # Override model if specified
         if custom_model:
@@ -1285,10 +1284,11 @@ def agent_init_command(
 
     output_file = agents_dir / f"{agent_name}.yaml"
 
-    if output_file.exists():
-        if not click.confirm(f"Agent {agent_name}.yaml already exists. Overwrite?"):
-            click.echo("Aborted.")
-            return
+    if output_file.exists() and not click.confirm(
+        f"Agent {agent_name}.yaml already exists. Overwrite?"
+    ):
+        click.echo("Aborted.")
+        return
 
     with open(output_file, "w", encoding="utf-8") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
@@ -1374,4 +1374,3 @@ def agent_command_entry() -> None:
 
 if __name__ == "__main__":
     cli()
-

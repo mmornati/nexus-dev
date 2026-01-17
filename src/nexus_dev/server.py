@@ -18,13 +18,13 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from .agents import AgentConfig, AgentExecutor, AgentManager
 from .chunkers import ChunkerRegistry, CodeChunk
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import EmbeddingProvider, create_embedder
 from .gateway.connection_manager import ConnectionManager
 from .mcp_config import MCPConfig
-from .agents import AgentConfig, AgentExecutor, AgentManager
 
 # Initialize FastMCP server
 mcp = FastMCP("nexus-dev")
@@ -1042,7 +1042,6 @@ def _register_agent_tools(database: NexusDatabase) -> None:
 
 
 def main() -> None:
-
     """Run the MCP server."""
     import argparse
     import signal
@@ -1121,7 +1120,7 @@ def main() -> None:
                 args.host,
                 args.port,
             )
-            mcp.run(transport="sse", host=args.host, port=args.port)
+            mcp.run(transport="sse", host=args.host, port=args.port)  # type: ignore
         else:
             logger.info("Server initialization complete, running stdio transport")
             mcp.run(transport="stdio")

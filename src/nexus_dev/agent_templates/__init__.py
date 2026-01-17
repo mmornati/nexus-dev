@@ -23,8 +23,4 @@ def list_templates() -> list[str]:
     Returns:
         List of template names (without .yaml extension).
     """
-    return [
-        p.stem
-        for p in TEMPLATES_DIR.glob("*.yaml")
-        if not p.name.startswith("_")
-    ]
+    return [p.stem for p in TEMPLATES_DIR.glob("*.yaml") if not p.name.startswith("_")]

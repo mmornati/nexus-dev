@@ -42,9 +42,7 @@ class AgentManager:
             logger.debug("Agents directory not found: %s", self.agents_dir)
             return
 
-        yaml_files = list(self.agents_dir.glob("*.yaml")) + list(
-            self.agents_dir.glob("*.yml")
-        )
+        yaml_files = list(self.agents_dir.glob("*.yaml")) + list(self.agents_dir.glob("*.yml"))
 
         for yaml_file in yaml_files:
             try:

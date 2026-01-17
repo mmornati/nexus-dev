@@ -288,8 +288,8 @@ class VertexAIEmbedder(EmbeddingProvider):
             location: Google Cloud region (e.g., "us-central1").
         """
         try:
-            import vertexai  # type: ignore
-            from vertexai.language_models import TextEmbeddingModel  # type: ignore
+            import vertexai
+            from vertexai.language_models import TextEmbeddingModel
         except ImportError:
             raise ImportError(
                 "Google Vertex AI dependencies not found. "
@@ -339,7 +339,7 @@ class VertexAIEmbedder(EmbeddingProvider):
         # Process in batches
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            embeddings = self._model.get_embeddings(batch)
+            embeddings = self._model.get_embeddings(list(batch))
             all_embeddings.extend([e.values for e in embeddings])
 
         return all_embeddings
@@ -451,14 +451,14 @@ class VoyageEmbedder(EmbeddingProvider):
         api_key: str | None = None,
     ) -> None:
         try:
-            import voyageai  # type: ignore
+            import voyageai
         except ImportError:
             raise ImportError(
                 "Voyage AI dependencies not found. Please run `pip install nexus-dev[voyage]`."
             ) from None
 
         self._model = model
-        self._client = voyageai.AsyncClient(api_key=api_key or os.environ.get("VOYAGE_API_KEY"))
+        self._client = voyageai.AsyncClient(api_key=api_key or os.environ.get("VOYAGE_API_KEY"))  # type: ignore
 
     @property
     def model_name(self) -> str:
@@ -487,7 +487,7 @@ class VoyageEmbedder(EmbeddingProvider):
                 model=self._model,
                 input_type="document",  # optimized for retrieval
             )
-            all_embeddings.extend(response.embeddings)
+            all_embeddings.extend(list(response.embeddings))  # type: ignore
 
         return all_embeddings
 
@@ -501,7 +501,7 @@ class CohereEmbedder(EmbeddingProvider):
         api_key: str | None = None,
     ) -> None:
         try:
-            import cohere  # type: ignore
+            import cohere
         except ImportError:
             raise ImportError(
                 "Cohere dependencies not found. Please run `pip install nexus-dev[cohere]`."
@@ -529,7 +529,7 @@ class CohereEmbedder(EmbeddingProvider):
         response = await self._client.embed(
             texts=texts, model=self._model, input_type="search_document", embedding_types=["float"]
         )
-        return response.embeddings.float
+        return response.embeddings.float  # type: ignore
 
 
 def create_embedder(config: NexusConfig) -> EmbeddingProvider:
