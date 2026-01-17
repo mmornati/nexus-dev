@@ -57,6 +57,7 @@ nexus-dev = "nexus_dev.server:main"
 nexus-mcp = "nexus_dev.cli:mcp_command_entry"
 nexus-agent = "nexus_dev.cli:agent_command_entry"
 nexus-import-github = "nexus_dev.cli:import_github_command"
+nexus-search = "nexus_dev.cli:search_command"
 
 [project.urls]
 Homepage = "https://github.com/mmornati/nexus-dev"

@@ -14,6 +14,7 @@ Nexus-Dev is an open-source MCP (Model Context Protocol) server that provides a 
 
 - 🧠 **Persistent Memory**: Index your code and documentation for semantic search
 - 📚 **Lesson Learning**: Record problems and solutions that the AI can recall later
+- 🐙 **GitHub Integration**: Import Issues and Pull Requests into your knowledge base (see [docs/github-import.md](docs/github-import.md))
 - 🌐 **Multi-Language Support**: Python, JavaScript/TypeScript, Java (extensible via tree-sitter)
 - 📖 **Documentation Indexing**: Parse and index Markdown/RST documentation
 - 🔄 **Cross-Project Learning**: Share knowledge across all your projects

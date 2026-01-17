@@ -741,6 +741,51 @@ def import_github_command(repo: str, owner: str, limit: int, state: str) -> None
         click.echo(f"❌ Import failed: {e}", err=True)
 
 
+@cli.command("search")
+@click.argument("query")
+@click.option("--type", "content_type", help="Content type to filter by")
+@click.option("--limit", default=5, help="Number of results")
+def search_command(query: str, content_type: str | None, limit: int) -> None:
+    """Search the knowledge base."""
+    # Load config
+    config_path = Path.cwd() / "nexus_config.json"
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    click.echo(f"🔍 Searching for '{query}'...")
+
+    doc_type_enum = None
+    if content_type:
+        try:
+            doc_type_enum = DocumentType(content_type)
+        except ValueError:
+            click.echo(f"⚠️  Invalid type '{content_type}'. Ignoring filter.")
+
+    results = _run_async(database.search(query, limit=limit, doc_type=doc_type_enum))
+
+    if not results:
+        click.echo("No results found.")
+        return
+
+    click.echo(f"\nFound {len(results)} results:\n")
+
+    for i, doc in enumerate(results, 1):
+        click.echo(f"{i}. [{doc.doc_type.upper()}] {doc.name} (Score: {doc.score:.3f})")
+        click.echo(f"   path: {doc.file_path}")
+        # Preview text
+        text = doc.text.replace("\n", " ").strip()
+        if len(text) > 100:
+            text = text[:97] + "..."
+        click.echo(f'   "{text}"')
+        click.echo("")
+
+
 @cli.command("index-mcp")
 @click.option("--server", "-s", help="Server name to index (from MCP config)")
 @click.option(

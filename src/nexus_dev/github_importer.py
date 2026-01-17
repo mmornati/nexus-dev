@@ -208,7 +208,7 @@ Author: {issue.get("user", {}).get("login")}
 {body}
 """
             texts_to_embed.append(text)
-            valid_issues.append((issue, doc_type, text, number, url))
+            valid_issues.append((issue, doc_type, text, number, url, title))
 
         if not texts_to_embed:
             return 0
@@ -217,7 +217,9 @@ Author: {issue.get("user", {}).get("login")}
         # Assuming embedder has embed_batch
         embeddings = await embedder.embed_batch(texts_to_embed)
 
-        for (_, doc_type, text, number, url), vector in zip(valid_issues, embeddings, strict=True):
+        for (_, doc_type, text, number, url, title), vector in zip(
+            valid_issues, embeddings, strict=True
+        ):
             doc_id = generate_document_id(
                 self.project_id, f"github://{owner}/{repo}/issues/{number}", str(number), 0
             )
