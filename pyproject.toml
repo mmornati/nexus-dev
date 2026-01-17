@@ -1,6 +1,6 @@
 [project]
 name = "nexus-dev"
-version = "3.0.0"
+version = "3.1.0"
 description = "MCP server for persistent AI coding assistant memory with local RAG"
 readme = "README.md"
 license = {text = "MIT"}
