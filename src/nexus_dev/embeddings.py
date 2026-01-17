@@ -364,7 +364,7 @@ class BedrockEmbedder(EmbeddingProvider):
             aws_secret_access_key: AWS secret key.
         """
         try:
-            import boto3  # type: ignore
+            import boto3
         except ImportError:
             raise ImportError(
                 "AWS Bedrock dependencies not found. Please run `pip install nexus-dev[aws]`."
@@ -458,7 +458,7 @@ class VoyageEmbedder(EmbeddingProvider):
             ) from None
 
         self._model = model
-        self._client = voyageai.AsyncClient(api_key=api_key or os.environ.get("VOYAGE_API_KEY"))  # type: ignore
+        self._client = voyageai.AsyncClient(api_key=api_key or os.environ.get("VOYAGE_API_KEY"))  # type: ignore[attr-defined]
 
     @property
     def model_name(self) -> str:
@@ -487,7 +487,7 @@ class VoyageEmbedder(EmbeddingProvider):
                 model=self._model,
                 input_type="document",  # optimized for retrieval
             )
-            all_embeddings.extend(list(response.embeddings))  # type: ignore
+            all_embeddings.extend(list(response.embeddings))  # type: ignore[arg-type]
 
         return all_embeddings
 
@@ -529,7 +529,7 @@ class CohereEmbedder(EmbeddingProvider):
         response = await self._client.embed(
             texts=texts, model=self._model, input_type="search_document", embedding_types=["float"]
         )
-        return response.embeddings.float  # type: ignore
+        return response.embeddings.float  # type: ignore[union-attr]
 
 
 def create_embedder(config: NexusConfig) -> EmbeddingProvider:

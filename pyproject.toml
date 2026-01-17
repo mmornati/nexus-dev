@@ -102,6 +102,14 @@ module = [
     "tree_sitter.*",
     "tree_sitter_language_pack",
     "tree_sitter_language_pack.*",
+    "vertexai",
+    "vertexai.*",
+    "voyageai",
+    "voyageai.*",
+    "cohere",
+    "cohere.*",
+    "boto3",
+    "boto3.*",
 ]
 ignore_missing_imports = true
 
