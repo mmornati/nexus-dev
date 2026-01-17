@@ -24,6 +24,7 @@ from .database import Document, DocumentType, NexusDatabase, generate_document_i
 from .embeddings import EmbeddingProvider, create_embedder
 from .gateway.connection_manager import ConnectionManager
 from .mcp_config import MCPConfig
+from .agents import AgentConfig, AgentExecutor, AgentManager
 
 # Initialize FastMCP server
 mcp = FastMCP("nexus-dev")
@@ -36,6 +37,7 @@ _embedder: EmbeddingProvider | None = None
 _database: NexusDatabase | None = None
 _mcp_config: MCPConfig | None = None
 _connection_manager: ConnectionManager | None = None
+_agent_manager: AgentManager | None = None
 
 
 def _get_config() -> NexusConfig | None:
@@ -1002,7 +1004,45 @@ async def get_project_context(
         return f"Failed to get project context: {e!s}"
 
 
+def _register_agent_tools(database: NexusDatabase) -> None:
+    """Register dynamic tools for each loaded agent.
+
+    Each agent becomes an MCP tool named `ask_<agent_name>`.
+    """
+    if _agent_manager is None:
+        return
+
+    for agent_config in _agent_manager:
+
+        def create_agent_tool(cfg: AgentConfig) -> Any:
+            """Create a closure to capture the agent config."""
+
+            async def agent_tool(task: str) -> str:
+                """Execute a task using the configured agent.
+
+                Args:
+                    task: The task description to execute.
+
+                Returns:
+                    Agent's response.
+                """
+                executor = AgentExecutor(cfg, database, mcp)
+                config = _get_config()
+                project_id = config.project_id if config else None
+                return await executor.execute(task, project_id)
+
+            # Set the docstring dynamically
+            agent_tool.__doc__ = cfg.description
+            return agent_tool
+
+        tool_name = f"ask_{agent_config.name}"
+        tool_func = create_agent_tool(agent_config)
+        mcp.tool(name=tool_name, description=agent_config.description)(tool_func)
+        logger.info("Registered agent tool: %s", tool_name)
+
+
 def main() -> None:
+
     """Run the MCP server."""
     import argparse
     import signal
@@ -1066,8 +1106,13 @@ def main() -> None:
     try:
         logger.info("Starting Nexus-Dev MCP server...")
         _get_config()
-        _get_database()
+        database = _get_database()
         _get_mcp_config()
+
+        # Load and register custom agents
+        global _agent_manager
+        _agent_manager = AgentManager()
+        _register_agent_tools(database)
 
         # Run server with selected transport
         if args.transport == "sse":
