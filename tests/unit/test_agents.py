@@ -94,8 +94,15 @@ class TestAgentExecutor:
 
     @pytest.mark.asyncio
     async def test_execute_sampling_unsupported(self, agent_config, mock_db, mock_mcp):
-        mock_db.search = AsyncMock(return_value=[])
+        """Test fallback to Insight Mode when sampling is not supported."""
+        # 1. Setup mock RAG results so we have context to display
+        mock_db.search = AsyncMock(
+            return_value=[
+                make_search_result(text="function hello_world() {\n  console.log('test');\n}")
+            ]
+        )
 
+        # 2. Setup MCP to fail with "not supported"
         mock_mcp.get_context().session.create_message = AsyncMock(
             side_effect=Exception("client does not support CreateMessage")
         )
@@ -103,7 +110,14 @@ class TestAgentExecutor:
         executor = AgentExecutor(agent_config, mock_db, mock_mcp)
         response = await executor.execute("do something")
 
-        assert "does not support MCP Sampling" in response
+        # 3. Verify the response is the formatted markdown fallback
+        assert "# Agent: Test Agent (Insight Mode)" in response
+        # We expect 2 items because the agent config has 2 search_types ("code", "documentation")
+        # and our mock returns results for every call.
+        assert "Found 2 relevant items" in response
+        assert "Recommended System Prompt" in response
+        # Verify context content is present
+        assert "hello_world" in response
 
     @pytest.mark.asyncio
     async def test_execute_general_failure(self, agent_config, mock_db, mock_mcp):

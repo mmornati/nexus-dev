@@ -136,14 +136,62 @@ class AgentExecutor:
 
         except Exception as e:
             error_msg = str(e)
-            if "does not support CreateMessage" in error_msg:
-                help_msg = (
-                    "Your IDE or MCP client does not support MCP Sampling (CreateMessage). "
-                    "Please upgrade your IDE (Cursor, VS Code, etc.) to a version that supports "
-                    "MCP Sampling to use Agentic features."
+            if "does not support CreateMessage" in error_msg or "Method not found" in error_msg:
+                logger.warning(
+                    "MCP Sampling not supported by client. Returning context-only response."
                 )
-                logger.error("MCP Sampling unavailable: %s", help_msg)
-                return f"Error: {help_msg}"
+                return self._create_fallback_response(user_task, context_items, system_prompt)
 
             logger.error("MCP Sampling failed for agent %s: %s", self.config.name, e)
             return f"Agent execution failed: {e}"
+
+    def _create_fallback_response(
+        self, user_task: str, context_items: list[str], system_prompt: str
+    ) -> str:
+        """Create a Markdown response when full agent execution is not supported.
+
+        Args:
+            user_task: The original task.
+            context_items: List of retrieved context strings.
+            system_prompt: The constructed system prompt.
+
+        Returns:
+            Formatted Markdown string.
+        """
+        response = [
+            f"# Agent: {self.config.display_name} (Insight Mode)",
+            "",
+            "> **Note**: Your IDE does not support fully autonomous agent "
+            "execution (MCP Sampling).",
+            "> I have retrieved the relevant context and prepared the prompt for you below.",
+            "",
+            "## 1. Retrieved Context",
+            f"Found {len(context_items)} relevant items in the knowledge base:",
+            "",
+        ]
+
+        if context_items:
+            for i, item in enumerate(context_items, 1):
+                # Try to extract a clean title or first line
+                preview = item.split("\n")[0][:80]
+                response.append(f"**Item {i}**: `{preview}...`")
+                # Indent the content for better readability in the details block
+                response.append("<details>")
+                response.append(f"<summary>View Content</summary>\n\n{item}\n")
+                response.append("</details>\n")
+        else:
+            response.append("*No relevant context found.*")
+
+        response.extend(
+            [
+                "",
+                "## 2. Recommended System Prompt",
+                "You can use this prompt with your own LLM:",
+                "",
+                "```text",
+                system_prompt,
+                "```",
+            ]
+        )
+
+        return "\n".join(response)
