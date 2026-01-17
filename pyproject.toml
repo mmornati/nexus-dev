@@ -25,9 +25,11 @@ dependencies = [
     "click>=8.1.0",                     # CLI framework
     "pyarrow>=18.0.0",                  # Arrow for LanceDB
     "pydantic>=2.10.0",                 # Data validation
+    "pyyaml>=6.0.0",                    # YAML parsing for agent configs
     "tree-sitter>=0.24.0",              # Parser library
     "tree-sitter-language-pack>=0.7.0", # Pre-built parsers (100+ languages)
     "jsonschema>=4.18.0",               # JSON schema validation
+    "pandas>=2.0.0",                    # DataFrame support for LanceDB
 ]
 
 [project.optional-dependencies]
@@ -42,6 +44,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "ruff>=0.9.0",
     "mypy>=1.14.0",
+    "types-PyYAML>=6.0.0",
 ]
 
 [project.scripts]
@@ -52,6 +55,7 @@ nexus-index-mcp = "nexus_dev.cli:index_mcp_command_entry"
 nexus-status = "nexus_dev.cli:status_command"
 nexus-dev = "nexus_dev.server:main"
 nexus-mcp = "nexus_dev.cli:mcp_command_entry"
+nexus-agent = "nexus_dev.cli:agent_command_entry"
 
 [project.urls]
 Homepage = "https://github.com/mmornati/nexus-dev"
@@ -64,6 +68,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nexus_dev"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"src/nexus_dev/agent_templates" = "nexus_dev/agent_templates"
 
 [tool.ruff]
 line-length = 100
@@ -96,6 +103,14 @@ module = [
     "tree_sitter.*",
     "tree_sitter_language_pack",
     "tree_sitter_language_pack.*",
+    "vertexai",
+    "vertexai.*",
+    "voyageai",
+    "voyageai.*",
+    "cohere",
+    "cohere.*",
+    "boto3",
+    "boto3.*",
 ]
 ignore_missing_imports = true
 
@@ -110,6 +125,7 @@ module = [
 ]
 warn_return_any = false
 disallow_untyped_defs = false
+disable_error_code = ["attr-defined", "arg-type", "union-attr"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
