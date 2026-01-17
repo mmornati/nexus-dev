@@ -144,6 +144,6 @@ class AgentExecutor:
                 )
                 logger.error("MCP Sampling unavailable: %s", help_msg)
                 return f"Error: {help_msg}"
-            
+
             logger.error("MCP Sampling failed for agent %s: %s", self.config.name, e)
             return f"Agent execution failed: {e}"

@@ -1,5 +1,6 @@
 """Tests for MCP server tool handlers with mocked dependencies."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,6 +40,14 @@ def make_search_result(
         server_name=server_name,
         parameters_schema=parameters_schema,
     )
+
+
+@pytest.fixture
+def mock_ctx():
+    """Mock Context with session."""
+    ctx = MagicMock()
+    ctx.session = AsyncMock()
+    return ctx
 
 
 class TestSearchKnowledge:
@@ -480,7 +489,7 @@ class TestHelperFunctions:
         # Setup _find_project_root to return a mock path
         mock_root = MagicMock()
         mock_find_root.return_value = mock_root
-        
+
         # When _get_config calls root / "nexus_config.json" -> config_path
         mock_config_path = MagicMock()
         mock_root.__truediv__.return_value = mock_config_path
@@ -694,7 +703,7 @@ class TestMCPConfigLoading:
         # Setup _find_project_root
         mock_root = MagicMock()
         mock_find_root.return_value = mock_root
-        
+
         # mcp_config path
         mock_config_path = MagicMock()
         # root / ".nexus" / "mcp_config.json"
@@ -1596,3 +1605,83 @@ class TestGetActiveToolsResource:
         # homeassistant tools should NOT be shown (inactive server)
         assert "homeassistant" not in result
         assert "turn_on_light" not in result
+
+
+class TestProjectRootDiscovery:
+    """Test suite for project root discovery functions."""
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server._get_project_root_from_session")
+    @patch("os.environ", {"NEXUS_PROJECT_ROOT": "/env/project"})
+    async def test_find_project_root_from_env(self, mock_get_root_session):
+        """Test _find_project_root using environment variable."""
+        from nexus_dev.server import _find_project_root
+
+        # We need to mock existence check for /env/project/nexus_config.json
+        def mock_exists(self):
+            s = str(self).rstrip("/")
+            return s in ["/env/project", "/env/project/nexus_config.json"]
+
+        with (
+            patch.object(Path, "exists", autospec=True, side_effect=mock_exists),
+            patch("nexus_dev.server._project_root", None),
+        ):
+            root = _find_project_root()
+            assert root == Path("/env/project")
+
+    @pytest.mark.asyncio
+    @patch("nexus_dev.server.Path.cwd")
+    async def test_find_project_root_by_walking_up(self, mock_cwd):
+        """Test _find_project_root by walking up from current directory."""
+        from nexus_dev.server import _find_project_root
+
+        # Mock Path.cwd().resolve() to return /a/b/c
+        mock_cwd.return_value.resolve.return_value = Path("/a/b/c")
+
+        # Mock existence: only /a has nexus_config.json
+        def mock_exists(self):
+            s = str(self).rstrip("/")
+            return s in ["/a", "/a/nexus_config.json"]
+
+        with (
+            patch.object(Path, "exists", autospec=True, side_effect=mock_exists),
+            patch("nexus_dev.server._project_root", None),
+        ):
+            root = _find_project_root()
+            assert root == Path("/a")
+
+    @pytest.mark.asyncio
+    async def test_get_project_root_from_session_success(self, mock_ctx):
+        """Test _get_project_root_from_session with valid root."""
+        from nexus_dev.server import _get_project_root_from_session
+
+        mock_root = MagicMock()
+        mock_root.uri = "file:///test/project"
+        mock_ctx.session.list_roots.return_value = MagicMock(roots=[mock_root])
+
+        # Mock existence of both city and nexus_config.json
+        def mock_exists(self):
+            s = str(self).rstrip("/")
+            return s in ["/test/project", "/test/project/nexus_config.json"]
+
+        with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
+            root = await _get_project_root_from_session(mock_ctx)
+            assert root == Path("/test/project")
+
+    @pytest.mark.asyncio
+    async def test_get_project_root_from_session_fallback(self, mock_ctx):
+        """Test fallback to first root if no nexus_config.json found."""
+        from nexus_dev.server import _get_project_root_from_session
+
+        mock_root = MagicMock()
+        mock_root.uri = "file:///test/root"
+        mock_ctx.session.list_roots.return_value = MagicMock(roots=[mock_root])
+
+        # Mock existence: /test/root/nexus_config.json does NOT exist,
+        # but /test/root (the directory itself) DOES exist.
+        def mock_exists(self):
+            return str(self).rstrip("/") == "/test/root"
+
+        with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
+            root = await _get_project_root_from_session(mock_ctx)
+            assert root == Path("/test/root")

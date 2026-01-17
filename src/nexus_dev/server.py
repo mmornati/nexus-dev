@@ -44,10 +44,10 @@ _project_root: Path | None = None
 
 def _find_project_root() -> Path | None:
     """Find the project root by looking for nexus_config.json.
-    
+
     Walks up from the current directory to find nexus_config.json.
     Also checks NEXUS_PROJECT_ROOT environment variable as a fallback.
-    
+
     Returns:
         Path to project root if found, None otherwise.
     """
@@ -56,7 +56,7 @@ def _find_project_root() -> Path | None:
         return _project_root
 
     import os
-    
+
     # First check environment variable
     env_root = os.environ.get("NEXUS_PROJECT_ROOT")
     if env_root:
@@ -64,10 +64,10 @@ def _find_project_root() -> Path | None:
         if (env_path / "nexus_config.json").exists():
             logger.debug("Found project root from NEXUS_PROJECT_ROOT: %s", env_path)
             return env_path
-    
+
     current = Path.cwd().resolve()
     logger.debug("Searching for project root from cwd: %s", current)
-    
+
     # Walk up the directory tree
     for parent in [current] + list(current.parents):
         if (parent / "nexus_config.json").exists():
@@ -78,7 +78,7 @@ def _find_project_root() -> Path | None:
         if parent == parent.parent:
             logger.debug("Reached filesystem root without finding nexus_config.json")
             break
-    
+
     logger.debug("No project root found (no nexus_config.json in directory tree)")
     return None
 
@@ -841,6 +841,7 @@ async def record_lesson(
         Confirmation with lesson ID and a summary.
     """
     import yaml
+
     config = _get_config()
     if project_id:
         effective_project_id = project_id
@@ -859,7 +860,7 @@ async def record_lesson(
         "project_id": effective_project_id,
         "context": context or "",
     }
-    
+
     lesson_parts = [
         "---",
         yaml.dump(frontmatter, sort_keys=False).strip(),
@@ -1035,6 +1036,7 @@ async def get_project_context(
 
             for lesson in recent_lessons:
                 import yaml
+
                 output_parts.append(f"#### {lesson.name}")
                 # Extract just the problem summary
                 # Extract problem from frontmatter or text
@@ -1048,14 +1050,14 @@ async def get_project_context(
                             problem = fm.get("problem", "")
                     except Exception:
                         pass
-                
+
                 if not problem:
                     lines = lesson.text.split("\n")
                     for i, line in enumerate(lines):
                         if line.strip() == "## Problem" and i + 1 < len(lines):
                             problem = lines[i + 1].strip()
                             break
-                            
+
                 if problem:
                     output_parts.append(f"**Problem:** {problem[:200]}...")
                 output_parts.append("")
@@ -1069,85 +1071,79 @@ async def get_project_context(
         return f"Failed to get project context: {e!s}"
 
 
-async def _get_project_root_from_session(ctx: Context) -> Path | None:
+async def _get_project_root_from_session(ctx: Context[Any, Any]) -> Path | None:
     """Get the project root from MCP session roots.
-    
+
     Uses session.list_roots() to query the IDE for workspace folders.
-    
+
     Args:
         ctx: FastMCP Context with session access.
-        
+
     Returns:
         Path to the project root if found, None otherwise.
     """
     try:
         # Query the IDE for workspace roots
         roots_result = await ctx.session.list_roots()
-        
+
         if not roots_result.roots:
             logger.debug("No roots returned from session.list_roots()")
             return None
-        
+
         # Look for a root that contains nexus_config.json (indicates a nexus project)
         for root in roots_result.roots:
             uri = str(root.uri)
             # Handle file:// URIs
-            if uri.startswith("file://"):
-                path = Path(uri[7:])  # Remove "file://" prefix
-            else:
-                path = Path(uri)
-            
+            path = Path(uri[7:]) if uri.startswith("file://") else Path(uri)
+
             if path.exists() and (path / "nexus_config.json").exists():
                 logger.debug("Found nexus project root from session: %s", path)
                 return path
-        
+
         # Fall back to first root if none have nexus_config.json
         first_uri = str(roots_result.roots[0].uri)
-        if first_uri.startswith("file://"):
-            path = Path(first_uri[7:])
-        else:
-            path = Path(first_uri)
-            
+        path = Path(first_uri[7:]) if first_uri.startswith("file://") else Path(first_uri)
+
         if path.exists():
             logger.debug("Using first root from session: %s", path)
             return path
-            
+
     except Exception as e:
         logger.debug("Failed to get roots from session: %s", e)
-    
+
     return None
 
 
 @mcp.tool()
-async def list_agents(ctx: Context) -> str:
+async def list_agents(ctx: Context[Any, Any]) -> str:
     """List available agents in the current workspace.
-    
+
     Discovers agents from the agents/ directory in the IDE's current workspace.
     Use ask_agent tool to execute tasks with a specific agent.
-    
+
     Returns:
         List of available agents with names and descriptions.
     """
     # Try to get project root from session (MCP roots)
     project_root = await _get_project_root_from_session(ctx)
-    
+
     # Fall back to environment variable or cwd
     if not project_root:
         project_root = _find_project_root()
-    
+
     if not project_root:
         return "No project root found. Make sure you have a nexus_config.json in your workspace."
-    
+
     agents_dir = project_root / "agents"
     if not agents_dir.exists():
         return f"No agents directory found at {agents_dir}. Create it and add agent YAML files."
-    
+
     # Load agents from directory
     agent_manager = AgentManager(agents_dir=agents_dir)
-    
+
     if len(agent_manager) == 0:
         return f"No agents found in {agents_dir}. Add YAML agent configuration files."
-    
+
     lines = ["# Available Agents", ""]
     for agent in agent_manager:
         lines.append(f"## {agent.display_name or agent.name}")
@@ -1156,22 +1152,22 @@ async def list_agents(ctx: Context) -> str:
         if agent.profile:
             lines.append(f"- **Role:** {agent.profile.role}")
         lines.append("")
-    
+
     lines.append("Use `ask_agent` tool with the agent name to execute a task.")
     return "\n".join(lines)
 
 
 @mcp.tool()
-async def ask_agent(agent_name: str, task: str, ctx: Context) -> str:
+async def ask_agent(agent_name: str, task: str, ctx: Context[Any, Any]) -> str:
     """Execute a task using a custom agent from the current workspace.
-    
+
     Loads the specified agent from the workspace's agents/ directory and
     executes the given task.
-    
+
     Args:
         agent_name: Name of the agent to use (e.g., 'nexus_architect').
         task: The task description to execute.
-        
+
     Returns:
         Agent's response.
     """
@@ -1179,29 +1175,29 @@ async def ask_agent(agent_name: str, task: str, ctx: Context) -> str:
     database = _get_database()
     if database is None:
         return "Database not initialized. Run nexus-init first."
-    
+
     # Try to get project root from session (MCP roots)
     project_root = await _get_project_root_from_session(ctx)
-    
+
     # Fall back to environment variable or cwd
     if not project_root:
         project_root = _find_project_root()
-    
+
     if not project_root:
         return "No project root found. Make sure you have a nexus_config.json in your workspace."
-    
+
     agents_dir = project_root / "agents"
     if not agents_dir.exists():
         return f"No agents directory found at {agents_dir}."
-    
+
     # Load agents from directory
     agent_manager = AgentManager(agents_dir=agents_dir)
     agent_config = agent_manager.get_agent(agent_name)
-    
+
     if not agent_config:
         available = [a.name for a in agent_manager]
         return f"Agent '{agent_name}' not found. Available agents: {available}"
-    
+
     # Execute the task
     try:
         executor = AgentExecutor(agent_config, database, mcp)
@@ -1214,55 +1210,55 @@ async def ask_agent(agent_name: str, task: str, ctx: Context) -> str:
 
 
 @mcp.tool()
-async def refresh_agents(ctx: Context) -> str:
+async def refresh_agents(ctx: Context[Any, Any]) -> str:
     """Discovers and registers individual agent tools from the current workspace.
-    
+
     This tool:
     1. Queries the IDE for the current workspace root.
     2. Scans the 'agents/' directory for agent configurations.
     3. Dynamically registers 'ask_<agent_name>' tools for each agent found.
     4. Notifies the IDE that the tool list has changed.
-    
+
     Returns:
         A report of registered agents or an error message.
     """
     project_root = await _get_project_root_from_session(ctx)
     if not project_root:
         return "No nexus project root found in workspace (nexus_config.json missing)."
-    
+
     # Persist the root globally so other tools find it
     global _project_root
     _project_root = project_root
-    
+
     # Reload other configs if they were initialized lazily from /
     global _config, _mcp_config, _database
     _config = None
     _mcp_config = None
     _database = None
-    
+
     database = _get_database()
     if database is None:
         return "Database not initialized."
-    
+
     agents_dir = project_root / "agents"
     if not agents_dir.exists():
         return f"No agents directory found at {agents_dir}."
-        
+
     global _agent_manager
     _agent_manager = AgentManager(agents_dir=agents_dir)
-    
+
     if len(_agent_manager) == 0:
         return "No agents found in agents/ directory."
-        
+
     # Register the tools
     _register_agent_tools(database, _agent_manager)
-    
+
     # Notify the client that the tool list has changed
     try:
         await ctx.session.send_tool_list_changed()
     except Exception as e:
         logger.warning("Failed to send tool_list_changed notification: %s", e)
-        
+
     agent_names = [a.name for a in _agent_manager]
     return f"Successfully registered {len(agent_names)} agent tools: {', '.join(agent_names)}"
 
@@ -1301,14 +1297,10 @@ def _register_agent_tools(database: NexusDatabase, agent_manager: AgentManager |
 
         tool_name = f"ask_{agent_config.name}"
         tool_func = create_agent_tool(agent_config)
-        
+
         # We use mcp.add_tool directly to allow dynamic registration at runtime
         # FastMCP.tool is a decorator, add_tool is the underlying method
-        mcp.add_tool(
-            fn=tool_func,
-            name=tool_name,
-            description=agent_config.description
-        )
+        mcp.add_tool(fn=tool_func, name=tool_name, description=agent_config.description)
         logger.info("Registered agent tool: %s", tool_name)
 
 
@@ -1386,7 +1378,7 @@ def main() -> None:
         agents_dir = project_root / "agents" if project_root else None
         logger.debug("Project root: %s", project_root)
         logger.debug("Agents directory: %s", agents_dir)
-        
+
         global _agent_manager
         _agent_manager = AgentManager(agents_dir=agents_dir)
         _register_agent_tools(database, _agent_manager)
