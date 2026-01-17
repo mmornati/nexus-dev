@@ -25,6 +25,8 @@ class DocumentType(str, Enum):
     TOOL = "tool"
     INSIGHT = "insight"  # LLM reasoning, mistakes, backtracking
     IMPLEMENTATION = "implementation"  # Plan summaries, design decisions
+    GITHUB_ISSUE = "github_issue"
+    GITHUB_PR = "github_pr"
 
 
 @dataclass

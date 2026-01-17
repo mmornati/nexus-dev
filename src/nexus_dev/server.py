@@ -25,6 +25,7 @@ from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import EmbeddingProvider, create_embedder
 from .gateway.connection_manager import ConnectionManager
+from .github_importer import GitHubImporter
 from .mcp_config import MCPConfig
 
 # Initialize FastMCP server
@@ -791,7 +792,7 @@ async def index_file(
             return f"No indexable content found in: {file_path}"
 
         # Index chunks
-        doc_ids = await _index_chunks(chunks, effective_project_id, doc_type)
+        await _index_chunks(chunks, effective_project_id, doc_type)
 
         # Summarize by chunk type
         type_counts: dict[str, int] = {}
@@ -799,18 +800,52 @@ async def index_file(
             ctype = chunk.chunk_type.value
             type_counts[ctype] = type_counts.get(ctype, 0) + 1
 
-        type_summary = ", ".join(f"{count} {ctype}(s)" for ctype, count in type_counts.items())
-
-        return (
-            f"✅ Indexed `{file_path}`\n"
-            f"- Chunks: {len(doc_ids)}\n"
-            f"- Types: {type_summary}\n"
-            f"- Language: {ChunkerRegistry.get_language(path)}\n"
-            f"- Project: {effective_project_id}"
-        )
-
     except Exception as e:
-        return f"Indexing failed: {e!s}"
+        return f"Error indexing {path.name}: {e}"
+
+    return f"Indexed {len(chunks)} chunks from {path.name}: {type_counts}"
+
+
+@mcp.tool()
+async def import_github_issues(
+    repo: str,
+    owner: str,
+    limit: int = 10,
+    state: str = "all",
+) -> str:
+    """Import GitHub issues and pull requests into the knowledge base.
+
+    Imports issues from the specified repository using the 'github' MCP server.
+    Items are indexed for semantic search (search_knowledge) and can be filtered
+    by 'github_issue' or 'github_pr' content types.
+
+    Args:
+        repo: Repository name (e.g., "nexus-dev").
+        owner: Repository owner (e.g., "mmornati").
+        limit: Maximum number of issues to import (default: 10).
+        state: Issue state filter: "open" (default), "closed", or "all".
+
+    Returns:
+        Summary of imported items.
+    """
+    database = _get_database()
+    config = _get_config()
+
+    if not config:
+        return "Error: No project configuration found. Run 'nexus-init' first."
+
+    from .mcp_client import MCPClientManager
+
+    client_manager = MCPClientManager()
+    mcp_config = _get_mcp_config()
+
+    importer = GitHubImporter(database, config.project_id, client_manager, mcp_config)
+
+    try:
+        count = await importer.import_issues(owner, repo, limit, state)
+        return f"Successfully imported {count} issues/PRs from {owner}/{repo}."
+    except Exception as e:
+        return f"Failed to import issues: {e!s}"
 
 
 @mcp.tool()

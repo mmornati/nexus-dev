@@ -25,6 +25,7 @@ from .chunkers import ChunkerRegistry
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import create_embedder
+from .github_importer import GitHubImporter
 from .mcp_client import MCPClientManager, MCPServerConnection
 from .mcp_config import MCPConfig, MCPServerConfig
 
@@ -694,6 +695,52 @@ def reindex_command() -> None:
     click.echo(f"✅ Re-indexed {total_chunks} chunks from {len(files_to_index)} files")
 
 
+@cli.command("import-github")
+@click.option("--repo", required=True, help="Repository name")
+@click.option("--owner", required=True, help="Repository owner")
+@click.option("--limit", default=20, help="Maximum number of issues to import")
+@click.option("--state", default="all", help="Issue state (open, closed, all)")
+def import_github_command(repo: str, owner: str, limit: int, state: str) -> None:
+    """Import GitHub issues and PRs."""
+    # Load config
+    config_path = Path.cwd() / "nexus_config.json"
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    database.connect()
+
+    # Load MCP config handled by manager inside generally, but here we can rely on standard init
+    client_manager = MCPClientManager()
+
+    # Load MCP config
+    mcp_config_path = Path.cwd() / ".nexus" / "mcp_config.json"
+    mcp_config = None
+    if mcp_config_path.exists():
+        try:
+            mcp_config = MCPConfig.load(mcp_config_path)
+        except Exception as e:
+            click.echo(f"⚠️  Failed to load MCP config: {e}", err=True)
+
+    if not mcp_config:
+        click.echo("⚠️  No MCP config found. GitHub import may fail if server not found.")
+
+    importer = GitHubImporter(database, config.project_id, client_manager, mcp_config)
+
+    click.echo(f"📥 Importing issues from {owner}/{repo}...")
+
+    try:
+        count = _run_async(importer.import_issues(owner, repo, limit, state))
+        click.echo(f"✅ Imported {count} issues/PRs")
+    except Exception as e:
+        click.echo(f"❌ Import failed: {e}", err=True)
+
+
 @cli.command("index-mcp")
 @click.option("--server", "-s", help="Server name to index (from MCP config)")
 @click.option(
@@ -812,6 +859,8 @@ async def _index_mcp_servers(
                 headers=server_dict.get("headers"),
                 timeout=server_dict.get("timeout", 30.0),
             )
+
+        # Connect and index
 
         click.echo(f"Indexing tools from: {name}")
 
