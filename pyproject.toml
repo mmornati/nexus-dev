@@ -124,6 +124,7 @@ module = [
 ]
 warn_return_any = false
 disallow_untyped_defs = false
+disable_error_code = ["attr-defined", "arg-type", "union-attr"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

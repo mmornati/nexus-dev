@@ -458,7 +458,7 @@ class VoyageEmbedder(EmbeddingProvider):
             ) from None
 
         self._model = model
-        self._client = voyageai.AsyncClient(api_key=api_key or os.environ.get("VOYAGE_API_KEY"))  # type: ignore[attr-defined]
+        self._client = voyageai.AsyncClient(api_key=api_key or os.environ.get("VOYAGE_API_KEY"))
 
     @property
     def model_name(self) -> str:
@@ -487,7 +487,7 @@ class VoyageEmbedder(EmbeddingProvider):
                 model=self._model,
                 input_type="document",  # optimized for retrieval
             )
-            all_embeddings.extend(list(response.embeddings))  # type: ignore[arg-type]
+            all_embeddings.extend(list(response.embeddings))
 
         return all_embeddings
 
@@ -529,7 +529,7 @@ class CohereEmbedder(EmbeddingProvider):
         response = await self._client.embed(
             texts=texts, model=self._model, input_type="search_document", embedding_types=["float"]
         )
-        return response.embeddings.float  # type: ignore[union-attr]
+        return response.embeddings.float
 
 
 def create_embedder(config: NexusConfig) -> EmbeddingProvider:
