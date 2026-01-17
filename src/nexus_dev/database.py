@@ -23,6 +23,8 @@ class DocumentType(str, Enum):
     LESSON = "lesson"
     DOCUMENTATION = "documentation"
     TOOL = "tool"
+    INSIGHT = "insight"  # LLM reasoning, mistakes, backtracking
+    IMPLEMENTATION = "implementation"  # Plan summaries, design decisions
 
 
 @dataclass
