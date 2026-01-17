@@ -104,8 +104,10 @@ class MCPConnection:
                                 delay = self.retry_delay * (2**attempt)
                                 logger.debug("[%s] Retrying in %.1fs...", self.name, delay)
                                 await asyncio.sleep(delay)
-            except asyncio.TimeoutError:
-                logger.error("[%s] Connection timed out after %.1fs", self.name, self.connect_timeout)
+            except TimeoutError:
+                logger.error(
+                    "[%s] Connection timed out after %.1fs", self.name, self.connect_timeout
+                )
                 raise MCPConnectionError(
                     f"Failed to connect to {self.name} due to timeout after {self.connect_timeout}s"
                 ) from last_error
@@ -282,9 +284,9 @@ class MCPConnection:
                 )
             logger.info("[%s] Tool invocation successful: %s", self.name, tool)
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("[%s] Tool invocation timed out: %s", self.name, tool)
-            raise MCPTimeoutError(f"Tool '{tool}' timed out after {self.timeout}s")
+            raise MCPTimeoutError(f"Tool '{tool}' timed out after {self.timeout}s") from None
         except Exception as e:
             logger.error("[%s] Tool invocation failed: %s - %s", self.name, tool, e)
             # Cleanup on any error (only for non-HTTP transports)
