@@ -929,6 +929,396 @@ async def record_lesson(
         return f"Failed to record lesson: {e!s}"
 
 
+@mcp.tool()
+async def record_insight(
+    category: str,
+    description: str,
+    reasoning: str,
+    correction: str | None = None,
+    files_affected: list[str] | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Record an insight from LLM reasoning during development.
+
+    Use this tool to capture:
+    - Mistakes made (wrong version, incompatible library, bad approach)
+    - Discoveries during exploration (useful patterns, gotchas)
+    - Backtracking decisions and their reasons
+    - Optimization opportunities found
+
+    Args:
+        category: Type of insight - "mistake", "discovery", "backtrack", or "optimization"
+        description: What happened (e.g., "Used httpx 0.23 which is incompatible with Python 3.13")
+        reasoning: Why it happened / what you were thinking
+                   (e.g., "Assumed latest version would work, didn't check compatibility")
+        correction: How it was fixed (for mistakes/backtracking)
+        files_affected: Optional list of affected file paths
+        project_id: Optional project identifier. Uses current project if not specified.
+
+    Returns:
+        Confirmation with insight ID and summary.
+    """
+    import yaml
+
+    config = _get_config()
+    if project_id:
+        effective_project_id = project_id
+    elif config:
+        effective_project_id = config.project_id
+    else:
+        return (
+            "Error: No project_id specified and no nexus_config.json found. "
+            "Please provide project_id or run 'nexus-init' first."
+        )
+
+    # Validate category
+    valid_categories = {"mistake", "discovery", "backtrack", "optimization"}
+    if category not in valid_categories:
+        return f"Error: category must be one of {valid_categories}, got '{category}'"
+
+    # Create insight text with YAML frontmatter
+    frontmatter = {
+        "category": category,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "project_id": effective_project_id,
+        "files_affected": files_affected or [],
+    }
+
+    insight_parts = [
+        "---",
+        yaml.dump(frontmatter, sort_keys=False).strip(),
+        "---",
+        "",
+        f"## {category.title()}",
+        description,
+        "",
+        "## Reasoning",
+        reasoning,
+    ]
+
+    if correction:
+        insight_parts.extend(["", "## Correction", correction])
+
+    if files_affected:
+        insight_parts.extend(["", "## Affected Files", ""])
+        for file_path in files_affected:
+            insight_parts.append(f"- `{file_path}`")
+
+    insight_text = "\n".join(insight_parts)
+
+    # Create unique ID
+    insight_id = str(uuid.uuid4())[:8]
+    timestamp = datetime.now(UTC).isoformat()
+
+    try:
+        embedder = _get_embedder()
+        database = _get_database()
+
+        # Generate embedding
+        embedding = await embedder.embed(insight_text)
+
+        # Create document
+        doc = Document(
+            id=generate_document_id(effective_project_id, "insights", insight_id, 0),
+            text=insight_text,
+            vector=embedding,
+            project_id=effective_project_id,
+            file_path=f".nexus/insights/{insight_id}.md",
+            doc_type=DocumentType.INSIGHT,
+            chunk_type="insight",
+            language="markdown",
+            name=f"{category}_{insight_id}",
+            start_line=0,
+            end_line=0,
+        )
+
+        await database.upsert_document(doc)
+
+        # Save to .nexus/insights directory if it exists
+        insights_dir = Path.cwd() / ".nexus" / "insights"
+        if insights_dir.exists():
+            insight_file = insights_dir / f"{insight_id}_{timestamp[:10]}.md"
+            try:
+                insight_file.write_text(insight_text, encoding="utf-8")
+            except Exception:
+                pass
+
+        return (
+            f"✅ Insight recorded!\n"
+            f"- ID: {insight_id}\n"
+            f"- Category: {category}\n"
+            f"- Project: {effective_project_id}\n"
+            f"- Description: {description[:100]}{'...' if len(description) > 100 else ''}"
+        )
+
+    except Exception as e:
+        return f"Failed to record insight: {e!s}"
+
+
+@mcp.tool()
+async def search_insights(
+    query: str,
+    category: str | None = None,
+    project_id: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search recorded insights from past development sessions.
+
+    Use when:
+    - Starting work on similar features
+    - Debugging issues that might have been seen before
+    - Looking for optimization patterns
+    - Checking if a mistake was already made
+
+    Args:
+        query: Description of what you're looking for.
+               Examples: "httpx compatibility", "authentication mistakes",
+               "database optimization patterns"
+        category: Optional filter - "mistake", "discovery", "backtrack", or "optimization"
+        project_id: Optional project identifier. Searches all projects if not specified.
+        limit: Maximum number of results (default: 5, max: 20).
+
+    Returns:
+        Relevant insights with category, description, and reasoning.
+    """
+    database = _get_database()
+    limit = min(max(1, limit), 20)
+
+    # Validate category if provided
+    if category:
+        valid_categories = {"mistake", "discovery", "backtrack", "optimization"}
+        if category not in valid_categories:
+            return f"Error: category must be one of {valid_categories}, got '{category}'"
+
+    try:
+        results = await database.search(
+            query=query,
+            project_id=project_id,
+            doc_type=DocumentType.INSIGHT,
+            limit=limit,
+        )
+
+        # Filter by category if specified
+        if category and results:
+            results = [r for r in results if category in r.name]
+
+        if not results:
+            msg = f"No insights found for: '{query}'"
+            if category:
+                msg += f" (category: {category})"
+            return msg + "\n\nTip: Use record_insight to save insights for future reference."
+
+        output_parts = [f"## Insights Found: '{query}'", ""]
+        if category:
+            output_parts[0] += f" (category: {category})"
+
+        for i, result in enumerate(results, 1):
+            output_parts.append(f"### Insight {i}")
+            output_parts.append(f"**ID:** {result.name}")
+            output_parts.append(f"**Project:** {result.project_id}")
+            output_parts.append("")
+            output_parts.append(result.text)
+            output_parts.append("")
+            output_parts.append("---")
+            output_parts.append("")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Insight search failed: {e!s}"
+
+
+@mcp.tool()
+async def record_implementation(
+    title: str,
+    summary: str,
+    approach: str,
+    design_decisions: list[str],
+    files_changed: list[str],
+    related_plan: str | None = None,
+    project_id: str | None = None,
+) -> str:
+    """Record a completed implementation for future reference.
+
+    Use this tool after completing a feature or significant work to capture:
+    - What was built and why
+    - Technical approach used
+    - Key design decisions
+    - Files involved
+
+    Args:
+        title: Short title (e.g., "Add user authentication", "Refactor database layer")
+        summary: What was implemented (1-3 sentences)
+        approach: How it was done - technical approach/architecture used
+        design_decisions: List of key decisions with rationale
+                         (e.g., ["Used JWT over sessions for stateless auth",
+                                 "Chose Redis for session cache due to speed requirements"])
+        files_changed: List of files modified/created
+        related_plan: Optional path or URL to implementation plan
+        project_id: Optional project identifier. Uses current project if not specified.
+
+    Returns:
+        Confirmation with implementation ID and summary.
+    """
+    import yaml
+
+    config = _get_config()
+    if project_id:
+        effective_project_id = project_id
+    elif config:
+        effective_project_id = config.project_id
+    else:
+        return (
+            "Error: No project_id specified and no nexus_config.json found. "
+            "Please provide project_id or run 'nexus-init' first."
+        )
+
+    # Create implementation text with YAML frontmatter
+    frontmatter = {
+        "title": title,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "project_id": effective_project_id,
+        "files_changed": files_changed,
+        "related_plan": related_plan or "",
+    }
+
+    impl_parts = [
+        "---",
+        yaml.dump(frontmatter, sort_keys=False).strip(),
+        "---",
+        "",
+        f"# {title}",
+        "",
+        "## Summary",
+        summary,
+        "",
+        "## Technical Approach",
+        approach,
+        "",
+        "## Design Decisions",
+        "",
+    ]
+
+    for decision in design_decisions:
+        impl_parts.append(f"- {decision}")
+
+    impl_parts.extend(["", "## Files Changed", ""])
+    for file_path in files_changed:
+        impl_parts.append(f"- `{file_path}`")
+
+    impl_text = "\n".join(impl_parts)
+
+    # Create unique ID
+    impl_id = str(uuid.uuid4())[:8]
+    timestamp = datetime.now(UTC).isoformat()
+
+    try:
+        embedder = _get_embedder()
+        database = _get_database()
+
+        # Generate embedding
+        embedding = await embedder.embed(impl_text)
+
+        # Create document
+        doc = Document(
+            id=generate_document_id(effective_project_id, "implementations", impl_id, 0),
+            text=impl_text,
+            vector=embedding,
+            project_id=effective_project_id,
+            file_path=f".nexus/implementations/{impl_id}.md",
+            doc_type=DocumentType.IMPLEMENTATION,
+            chunk_type="implementation",
+            language="markdown",
+            name=f"impl_{impl_id}",
+            start_line=0,
+            end_line=0,
+        )
+
+        await database.upsert_document(doc)
+
+        # Save to .nexus/implementations directory if it exists
+        impl_dir = Path.cwd() / ".nexus" / "implementations"
+        if impl_dir.exists():
+            impl_file = impl_dir / f"{impl_id}_{timestamp[:10]}.md"
+            try:
+                impl_file.write_text(impl_text, encoding="utf-8")
+            except Exception:
+                pass
+
+        return (
+            f"✅ Implementation recorded!\n"
+            f"- ID: {impl_id}\n"
+            f"- Title: {title}\n"
+            f"- Project: {effective_project_id}\n"
+            f"- Files: {len(files_changed)} changed"
+        )
+
+    except Exception as e:
+        return f"Failed to record implementation: {e!s}"
+
+
+@mcp.tool()
+async def search_implementations(
+    query: str,
+    project_id: str | None = None,
+    limit: int = 5,
+) -> str:
+    """Search recorded implementations.
+
+    Use to find:
+    - How similar features were built
+    - Design patterns used in the project
+    - Past technical approaches
+    - Implementation history
+
+    Args:
+        query: What you're looking for.
+               Examples: "authentication implementation", "database refactor",
+               "API design patterns"
+        project_id: Optional project identifier. Searches all projects if not specified.
+        limit: Maximum number of results (default: 5, max: 20).
+
+    Returns:
+        Relevant implementations with summaries and design decisions.
+    """
+    database = _get_database()
+    limit = min(max(1, limit), 20)
+
+    try:
+        results = await database.search(
+            query=query,
+            project_id=project_id,
+            doc_type=DocumentType.IMPLEMENTATION,
+            limit=limit,
+        )
+
+        if not results:
+            return (
+                f"No implementations found for: '{query}'\n\n"
+                "Tip: Use record_implementation after completing features to save them."
+            )
+
+        output_parts = [f"## Implementations Found: '{query}'", ""]
+
+        for i, result in enumerate(results, 1):
+            output_parts.append(f"### Implementation {i}")
+            output_parts.append(f"**ID:** {result.name}")
+            output_parts.append(f"**Project:** {result.project_id}")
+            output_parts.append("")
+            # Truncate long content
+            output_parts.append(result.text[:3000])
+            if len(result.text) > 3000:
+                output_parts.append("\n... (truncated)")
+            output_parts.append("")
+            output_parts.append("---")
+            output_parts.append("")
+
+        return "\n".join(output_parts)
+
+    except Exception as e:
+        return f"Implementation search failed: {e!s}"
+
+
 @mcp.resource("mcp://nexus-dev/active-tools")
 async def get_active_tools_resource() -> str:
     """List MCP tools from active profile servers.

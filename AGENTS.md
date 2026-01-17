@@ -109,7 +109,11 @@ This project uses **Nexus-Dev** for persistent AI memory. When working on this c
 | `search_code` | Find functions, classes, methods |
 | `search_docs` | Search documentation/markdown files |
 | `search_lessons` | Find past problem/solution pairs |
+| `search_insights` | Find past mistakes, discoveries, optimizations |
+| `search_implementations` | Find how features were built |
 | `record_lesson` | Save a debugging lesson for future reference |
+| `record_insight` | Capture LLM reasoning, mistakes, backtracking |
+| `record_implementation` | Save implementation summaries with design decisions |
 | `index_file` | Index a new file into the knowledge base |
 | `get_project_context` | View project stats and recent lessons |
 
@@ -146,3 +150,84 @@ record_lesson(
 2. **Record lessons** - After solving non-trivial bugs, save the solution for future reference
 3. **Index important files** - When creating new modules, index them for searchability
 4. **Check context** - Start sessions with `get_project_context()` to understand the codebase
+
+## Automatic Knowledge Capture
+
+> **IMPORTANT**: The tools below should be called **automatically** during development to build a knowledge base of insights and implementations.
+
+### When to Record Insights (Real-Time)
+
+Call `record_insight` **immediately** when any of the following happens:
+
+**Mistakes** - You tried something that didn't work:
+```
+record_insight(
+    category="mistake",
+    description="<what went wrong>",
+    reasoning="<why you thought it would work>",
+    correction="<how you fixed it>"
+)
+```
+
+Examples:
+- Used a library version incompatible with Python version
+- Chose an approach that had performance issues
+- Misunderstood an API and had to rewrite
+
+**Backtracking** - You changed direction on an approach:
+```
+record_insight(
+    category="backtrack",
+    description="<original approach>",
+    reasoning="<why you're changing direction>",
+    correction="<new approach>"
+)
+```
+
+**Discoveries** - You found something non-obvious or useful:
+```
+record_insight(
+    category="discovery",
+    description="<what you discovered>",
+    reasoning="<why it's useful/important>"
+)
+```
+
+**Optimizations** - You found a better way to do something:
+```
+record_insight(
+    category="optimization",
+    description="<optimization made>",
+    reasoning="<why it's better>",
+    correction="<old approach>"
+)
+```
+
+### When to Record Implementations (After Completion)
+
+After finishing a feature, refactor, or significant work, call `record_implementation`:
+
+```
+record_implementation(
+    title="<short title>",
+    summary="<what was built - 1-3 sentences>",
+    approach="<how it was built - technical approach>",
+    design_decisions=[
+        "Decision 1: rationale",
+        "Decision 2: rationale"
+    ],
+    files_changed=["file1.py", "file2.py"]
+)
+```
+
+**When to call**:
+- After completing a user-requested feature
+- After a significant refactor
+- After fixing a complex bug
+- When finishing implementation from an approved plan
+
+### Search Before Recording
+
+Before recording, **search first** to avoid duplicates:
+- `search_insights("similar problem")` - Check if this was already encountered
+- `search_implementations("similar feature")` - Check if this was already built
