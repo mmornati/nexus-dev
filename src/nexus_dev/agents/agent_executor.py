@@ -135,5 +135,15 @@ class AgentExecutor:
             return str(result.content)
 
         except Exception as e:
+            error_msg = str(e)
+            if "does not support CreateMessage" in error_msg:
+                help_msg = (
+                    "Your IDE or MCP client does not support MCP Sampling (CreateMessage). "
+                    "Please upgrade your IDE (Cursor, VS Code, etc.) to a version that supports "
+                    "MCP Sampling to use Agentic features."
+                )
+                logger.error("MCP Sampling unavailable: %s", help_msg)
+                return f"Error: {help_msg}"
+            
             logger.error("MCP Sampling failed for agent %s: %s", self.config.name, e)
             return f"Agent execution failed: {e}"

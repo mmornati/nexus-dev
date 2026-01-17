@@ -468,7 +468,8 @@ class TestHelperFunctions:
     @patch("nexus_dev.server._config", None)
     @patch("nexus_dev.server.NexusConfig")
     @patch("nexus_dev.server.Path")
-    def test_get_config_loads_from_file(self, mock_path, mock_nexus_config):
+    @patch("nexus_dev.server._find_project_root")
+    def test_get_config_loads_from_file(self, mock_find_root, mock_path, mock_nexus_config):
         """Test _get_config loads config when file exists."""
         # Reset global state
         import nexus_dev.server as server
@@ -476,9 +477,14 @@ class TestHelperFunctions:
 
         server._config = None
 
-        mock_path_obj = MagicMock()
-        mock_path_obj.exists.return_value = True
-        mock_path.cwd.return_value.__truediv__.return_value = mock_path_obj
+        # Setup _find_project_root to return a mock path
+        mock_root = MagicMock()
+        mock_find_root.return_value = mock_root
+        
+        # When _get_config calls root / "nexus_config.json" -> config_path
+        mock_config_path = MagicMock()
+        mock_root.__truediv__.return_value = mock_config_path
+        mock_config_path.exists.return_value = True
 
         # Mock the config object returned by load
         mock_config_instance = MagicMock()
@@ -677,16 +683,23 @@ class TestMCPConfigLoading:
     @patch("nexus_dev.server._mcp_config", None)
     @patch("nexus_dev.server.MCPConfig")
     @patch("nexus_dev.server.Path")
-    def test_get_mcp_config_loads_from_file(self, mock_path, mock_mcp_config):
+    @patch("nexus_dev.server._find_project_root")
+    def test_get_mcp_config_loads_from_file(self, mock_find_root, mock_path, mock_mcp_config):
         """Test _get_mcp_config loads config when file exists."""
         import nexus_dev.server as server
         from nexus_dev.server import _get_mcp_config
 
         server._mcp_config = None
 
-        mock_path_obj = MagicMock()
-        mock_path_obj.exists.return_value = True
-        mock_path.cwd.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_obj
+        # Setup _find_project_root
+        mock_root = MagicMock()
+        mock_find_root.return_value = mock_root
+        
+        # mcp_config path
+        mock_config_path = MagicMock()
+        # root / ".nexus" / "mcp_config.json"
+        mock_root.__truediv__.return_value.__truediv__.return_value = mock_config_path
+        mock_config_path.exists.return_value = True
 
         mock_config_instance = MagicMock()
         mock_mcp_config.load.return_value = mock_config_instance

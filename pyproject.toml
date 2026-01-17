@@ -29,6 +29,7 @@ dependencies = [
     "tree-sitter>=0.24.0",              # Parser library
     "tree-sitter-language-pack>=0.7.0", # Pre-built parsers (100+ languages)
     "jsonschema>=4.18.0",               # JSON schema validation
+    "pandas>=2.0.0",                    # DataFrame support for LanceDB
 ]
 
 [project.optional-dependencies]

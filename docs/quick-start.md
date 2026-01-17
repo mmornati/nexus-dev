@@ -128,7 +128,10 @@ Edit `~/.cursor/mcp.json`:
   "mcpServers": {
     "nexus-dev": {
       "command": "nexus-dev",
-      "args": []
+      "args": [],
+      "env": {
+        "NEXUS_PROJECT_ROOT": "/path/to/your/project"
+      }
     }
   }
 }
@@ -143,7 +146,10 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
   "mcpServers": {
     "nexus-dev": {
       "command": "nexus-dev",
-      "args": []
+      "args": [],
+      "env": {
+        "NEXUS_PROJECT_ROOT": "/path/to/your/project"
+      }
     }
   }
 }

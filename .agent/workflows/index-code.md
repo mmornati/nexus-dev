@@ -36,7 +36,7 @@ Use this workflow after creating new important files to add them to the knowledg
 To reindex the entire project:
 // turbo
 ```bash
-cd /Users/mmornati/Projects/nexus-dev && nexus-reindex --yes
+cd /Users/you/Projects/nexus-dev && nexus-reindex --yes
 ```
 
 ## When to Use
