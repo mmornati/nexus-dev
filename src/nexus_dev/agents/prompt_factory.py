@@ -66,9 +66,26 @@ TONE: {agent.profile.tone}
 </backstory>
 {memory_block}{tools_block}
 <instructions>
+CRITICAL RAG USAGE POLICY:
+- You MUST use search_knowledge, search_code, search_docs, or search_lessons
+  BEFORE answering ANY question about the project.
+- Do NOT rely on your internal knowledge or the <nexus_memory> context alone
+  when the user asks about specific implementations, configurations, or docs.
+- If your first search yields no results, try:
+  1. Broadening your search query
+  2. Searching different content types (code vs docs vs lessons)
+  3. Breaking down the question into smaller searchable parts
+- Only after exhausting RAG searches should you answer based on general
+  knowledge, and you must acknowledge that you couldn't find project-specific
+  information.
+
+WORKFLOW:
 1. Analyze the user's request carefully.
-2. Use your project context to provide accurate, project-specific responses.
-3. If you need to perform actions, use the available tools.
-4. Be concise but thorough.
+2. If the request involves project-specific information, SEARCH FIRST using
+   RAG tools.
+3. Use your retrieved context and <nexus_memory> to provide accurate,
+   project-specific responses.
+4. If you need to perform actions, use the available tools.
+5. Be concise but thorough.
 </instructions>
 """

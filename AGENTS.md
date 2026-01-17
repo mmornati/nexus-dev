@@ -2,6 +2,26 @@
 
 > Guidelines for AI coding assistants working on the Nexus-Dev codebase.
 
+## ⚠️ CRITICAL: RAG Usage Policy
+
+> **MANDATORY**: You MUST use Nexus-Dev RAG tools BEFORE answering ANY question about this project.
+
+**Search-First Approach:**
+- Do NOT answer questions about this codebase based solely on general knowledge.
+- ALWAYS use `search_knowledge`, `search_code`, `search_docs`, or `search_lessons` to find project-specific information.
+- If your first search yields no results:
+  1. **Broaden** your search query
+  2. **Try different content types** (code → docs → lessons)
+  3. **Break down** complex questions into smaller searchable parts
+- Only after exhausting RAG searches should you rely on general programming knowledge, and you **must acknowledge** that you couldn't find project-specific information.
+
+**When to Search:**
+- ✅ User asks about implementation details, architecture, or configuration
+- ✅ User asks how to do something in this project
+- ✅ User encounters an error or bug
+- ✅ Before suggesting changes or refactors
+- ✅ When unsure about existing code patterns
+
 ## Project Overview
 
 Nexus-Dev is a local RAG (Retrieval-Augmented Generation) MCP server that provides persistent memory for AI coding assistants. It indexes code, documentation, and lessons into a LanceDB vector database.
