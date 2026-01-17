@@ -53,17 +53,47 @@ nexus-index-mcp --all
 
 ## 4. Create a Custom Agent
 
+### Option A: Use a Pre-Built Template (Recommended)
+
+List available templates:
 ```bash
-nexus-agent init code_reviewer
+nexus-agent templates
+```
+
+Available templates:
+- **code_reviewer** - Reviews code for bugs, security issues, and best practices
+- **doc_writer** - Creates and updates technical documentation
+- **debug_detective** - Analyzes errors and proposes fixes
+- **refactor_architect** - Suggests code restructuring and design patterns
+- **test_engineer** - Generates test cases and improves coverage
+- **security_auditor** - Identifies vulnerabilities and recommends fixes
+- **api_designer** - Reviews and designs REST/GraphQL APIs
+- **performance_optimizer** - Finds performance bottlenecks and suggests optimizations
+
+Create from template:
+```bash
+# Create with default model from template
+nexus-agent init my_reviewer --from-template code_reviewer
+
+# Override template model
+nexus-agent init my_security --from-template security_auditor --model claude-opus-4.5
+```
+
+### Option B: Create Custom Agent Interactively
+
+```bash
+nexus-agent init my_custom_agent
 # Follow the interactive prompts for role, goal, and backstory
 ```
 
-This creates `agents/code_reviewer.yaml`. Edit it to customize:
+### Customize Your Agent
+
+Edit the generated `agents/your_agent.yaml`:
 
 ```yaml
-name: "code_reviewer"
-display_name: "Code Reviewer"
-description: "Delegate code review tasks to the Code Reviewer agent."
+name: "my_reviewer"
+display_name: "My Reviewer"
+description: "Delegate code review tasks to the My Reviewer agent."
 
 profile:
   role: "Senior Code Reviewer"
@@ -79,7 +109,8 @@ memory:
 tools: []  # Empty = all tools available
 
 llm_config:
-  model_hint: "claude-3-5-sonnet"  # Hint for IDE model selection
+  model_hint: "claude-sonnet-4.5"  # Primary model preference
+  fallback_hints: ["auto"]          # Fallback strategy
   temperature: 0.5
   max_tokens: 4000
 ```
@@ -162,6 +193,7 @@ Use the ask_code_reviewer tool to review this function for security issues.
 | `nexus-mcp list` | List configured servers |
 | `nexus-agent init` | Create a new custom agent |
 | `nexus-agent list` | List configured agents |
+| `nexus-agent templates` | Show available agent templates |
 
 ## Next Steps
 
