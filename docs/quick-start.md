@@ -155,6 +155,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 }
 ```
 
+> **CRITICAL**: If you do not set `NEXUS_PROJECT_ROOT` (or ensure `cwd` is correct), the server will start empty. In that case, you **MUST** run the `refresh_agents` tool immediately after connecting to load your project's configuration and agents.
+
 ## 6. Use Your Agent
 
 In your IDE, the agent appears as an MCP tool:

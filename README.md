@@ -217,6 +217,19 @@ You can configure downstream MCP servers in `.nexus/mcp_config.json` using eithe
 }
 ```
 
+### Project Context & Startup
+
+Nexus-Dev needs to know *which* project to load on startup. It determines this in two ways:
+
+1.  **Automatic Detection (Recommended)**: If the MCP server process is started with your project root as its **current working directory (cwd)**, it automatically loads `nexus_config.json` and `.nexus/mcp_config.json`.
+2.  **Environment Variable**: Setting `NEXUS_PROJECT_ROOT=/path/to/project` explicitly tells the server where to look.
+
+**When to use `refresh_agents`:**
+If the server starts in a generic location (like a global Docker container or default system path) without a project context, it starts "empty". You must then use the `refresh_agents` tool. This tool asks your IDE for the active workspace path and re-initializes the server with that context.
+
+> **Pro Tip**: Configure your MCP client (Cursor, Claude Desktop) to set `cwd` or `NEXUS_PROJECT_ROOT` to your project path. This matches the server's lifecycle to your open project and avoids the need for manual refreshing.
+```
+
 📖 See [docs/adding-mcp-servers.md](docs/adding-mcp-servers.md) for a guide on adding custom MCP servers.
 
 ### Supported Embedding Providers
