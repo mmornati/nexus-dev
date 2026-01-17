@@ -15,7 +15,7 @@ profile:
 memory:
   enabled: true
   rag_limit: 5
-  search_types: ["code", "documentation"]
+  search_types: ["code", "documentation", "lesson"]
 
 tools: []
 
