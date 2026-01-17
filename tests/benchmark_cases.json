@@ -1,0 +1,49 @@
+{
+    "test_cases": [
+        {
+            "name": "find_embedding_function",
+            "description": "Find the function that generates embeddings",
+            "traditional_files": [
+                "src/nexus_dev/embeddings.py"
+            ],
+            "rag_query": "function that generates embeddings"
+        },
+        {
+            "name": "understand_search_flow",
+            "description": "Understand how search works end-to-end",
+            "traditional_files": [
+                "src/nexus_dev/server.py",
+                "src/nexus_dev/database.py"
+            ],
+            "rag_query": "search semantic similarity database"
+        },
+        {
+            "name": "chunking_strategy",
+            "description": "How does code chunking work?",
+            "traditional_files": [
+                "src/nexus_dev/chunkers/base.py",
+                "src/nexus_dev/chunkers/__init__.py"
+            ],
+            "rag_query": "code chunking extract functions classes"
+        },
+        {
+            "name": "mcp_gateway_routing",
+            "description": "How does the MCP gateway route requests?",
+            "traditional_files": [
+                "src/nexus_dev/gateway/connection_manager.py",
+                "src/nexus_dev/mcp_config.py",
+                "src/nexus_dev/mcp_client.py"
+            ],
+            "rag_query": "MCP gateway invoke tool routing"
+        },
+        {
+            "name": "lesson_recording",
+            "description": "How are lessons stored and retrieved?",
+            "traditional_files": [
+                "src/nexus_dev/server.py",
+                "src/nexus_dev/database.py"
+            ],
+            "rag_query": "record lesson problem solution store"
+        }
+    ]
+}
