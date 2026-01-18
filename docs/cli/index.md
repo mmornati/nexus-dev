@@ -4,20 +4,22 @@ Nexus-Dev provides a comprehensive set of command-line tools for managing your k
 
 ---
 
-## Command Overview
+## Available Commands
 
 | Command | Description |
 |---------|-------------|
-| [`nexus-init`](init.md) | Initialize Nexus-Dev in a project |
-| [`nexus-index`](index-cmd.md) | Index files or directories |
-| [`nexus-reindex`](reindex.md) | Clear and rebuild the entire index |
-| [`nexus-status`](status.md) | Show project statistics |
-| [`nexus-search`](search.md) | Search the knowledge base |
-| [`nexus-export`](export.md) | Export knowledge to markdown files |
-| [`nexus-import-github`](import-github.md) | Import GitHub issues and PRs |
-| [`nexus-mcp`](mcp.md) | MCP server configuration |
-| [`nexus-agent`](agent.md) | Custom agent management |
-| [`nexus-index-mcp`](index-mcp.md) | Index MCP tool schemas |
+| [nexus-init](init.md) | Initialize a new Nexus-Dev project |
+| [nexus-index](index-cmd.md) | Index files into the knowledge base |
+| [nexus-status](status.md) | Show project status and statistics |
+| [nexus-inspect](inspect.md) | Inspect database contents for debugging |
+| [nexus-clean](clean.md) | Delete indexed data for a project |
+| [nexus-search](search.md) | Search the knowledge base |
+| [nexus-export](export.md) | Export knowledge base to markdown |
+| [nexus-reindex](reindex.md) | Re-index entire project |
+| [nexus-import-github](import-github.md) | Import GitHub issues/PRs |
+| [nexus-mcp](mcp.md) | Start MCP server |
+| [nexus-agent](agent.md) | Run agentic tasks |
+| [nexus-index-mcp](index-mcp.md) | Index MCP server definitions |
 
 ---
 

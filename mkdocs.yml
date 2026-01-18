@@ -73,6 +73,8 @@ nav:
     - nexus-init: cli/init.md
     - nexus-index: cli/index-cmd.md
     - nexus-status: cli/status.md
+    - nexus-inspect: cli/inspect.md
+    - nexus-clean: cli/clean.md
     - nexus-search: cli/search.md
     - nexus-export: cli/export.md
     - nexus-reindex: cli/reindex.md

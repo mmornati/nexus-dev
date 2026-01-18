@@ -775,7 +775,8 @@ def export_command(project_id: str | None, output: Path | None) -> None:
 
 
 @cli.command("status")
-def status_command() -> None:
+@click.option("-v", "--verbose", is_flag=True, help="Show detailed debug information")
+def status_command(verbose: bool) -> None:
     """Show Nexus-Dev status and statistics."""
     config_path = Path.cwd() / "nexus_config.json"
 
@@ -800,6 +801,12 @@ def status_command() -> None:
         database = NexusDatabase(config, embedder)
         database.connect()
 
+        if verbose:
+            click.echo("🔍 Debug Info:")
+            click.echo(f"   Database path exists: {config.get_db_path().exists()}")
+            click.echo(f"   Querying for project_id: {config.project_id}")
+            click.echo("")
+
         stats = _run_async(database.get_project_stats(config.project_id))
 
         click.echo("📈 Statistics:")
@@ -808,8 +815,211 @@ def status_command() -> None:
         click.echo(f"   Documentation: {stats.get('documentation', 0)}")
         click.echo(f"   Lessons: {stats.get('lesson', 0)}")
 
+        if verbose and stats.get("total", 0) > 0:
+            click.echo("")
+            click.echo("   Document type breakdown:")
+            for doc_type, count in stats.items():
+                if doc_type != "total":
+                    click.echo(f"     - {doc_type}: {count}")
+
     except Exception as e:
         click.echo(f"⚠️  Could not connect to database: {e!s}")
+        if verbose:
+            import traceback
+
+            click.echo("")
+            click.echo("Full traceback:")
+            click.echo(traceback.format_exc())
+
+
+@cli.command("inspect")
+@click.option("--project-id", help="Filter by project ID (default: current project)")
+@click.option("--limit", default=5, help="Number of sample documents to show")
+@click.option("--all-projects", is_flag=True, help="Show all projects in database")
+def inspect_command(project_id: str | None, limit: int, all_projects: bool) -> None:
+    """Inspect database contents for debugging."""
+    # Load config for default project_id
+    config = None
+    if not all_projects and not project_id:
+        config_path = Path.cwd() / "nexus_config.json"
+        if config_path.exists():
+            config = NexusConfig.load(config_path)
+            project_id = config.project_id
+
+    # Get database path from config or use default
+    if config:
+        embedder = create_embedder(config)
+        database = NexusDatabase(config, embedder)
+    else:
+        # Use default config to access shared database
+        default_config = NexusConfig.create_new("temp")
+        embedder = create_embedder(default_config)
+        database = NexusDatabase(default_config, embedder)
+
+    database.connect()
+
+    click.echo("🔍 Nexus-Dev Database Inspection")
+    click.echo("")
+
+    try:
+        # Get database info
+        db_path = database.config.get_db_path()
+        click.echo(f"Database location: {db_path}")
+
+        if db_path.exists():
+            # Calculate database size
+            total_size = sum(f.stat().st_size for f in db_path.rglob("*") if f.is_file())
+            click.echo(f"Database size: {total_size / 1024 / 1024:.2f} MB")
+        click.echo("")
+
+        # Get all project statistics
+        all_stats = _run_async(database.get_project_stats(None))
+        click.echo(f"📊 Total documents across all projects: {all_stats.get('total', 0)}")
+        click.echo("")
+
+        # Get table and show project breakdown
+        table = database._ensure_connected()
+        df = table.to_pandas()
+
+        if len(df) == 0:
+            click.echo("⚠️  Database is empty")
+            return
+
+        # Group by project
+        project_counts = df.groupby("project_id").size().sort_values(ascending=False)
+
+        click.echo("📁 Projects in database:")
+        for pid, count in project_counts.items():
+            marker = "👉" if pid == project_id else "  "
+            click.echo(f"{marker} {pid}: {count} chunks")
+        click.echo("")
+
+        # Show document type statistics for specific project or all
+        if project_id:
+            project_df = df[df["project_id"] == project_id]
+            if len(project_df) == 0:
+                click.echo(f"⚠️  No documents found for project: {project_id}")
+                return
+
+            click.echo(f"📈 Document types for project {project_id}:")
+            type_counts = project_df.groupby("doc_type").size()
+            for doc_type, count in type_counts.items():
+                click.echo(f"   {doc_type}: {count}")
+            click.echo("")
+
+            # Show sample documents
+            click.echo(f"📄 Sample documents (limit: {limit}):")
+            samples = project_df.head(limit)
+            for _idx, row in samples.iterrows():
+                click.echo(f"   - [{row['doc_type']}] {row['name']}")
+                click.echo(f"     File: {row['file_path']}")
+                if row["start_line"] > 0:
+                    click.echo(f"     Lines: {row['start_line']}-{row['end_line']}")
+                click.echo("")
+        else:
+            # Show overall document type breakdown
+            click.echo("📈 Document type breakdown (all projects):")
+            type_counts = df.groupby("doc_type").size()
+            for doc_type, count in type_counts.items():
+                click.echo(f"   {doc_type}: {count}")
+
+    except Exception as e:
+        click.echo(f"❌ Error inspecting database: {e!s}", err=True)
+        import traceback
+
+        click.echo(traceback.format_exc(), err=True)
+
+
+@cli.command("clean")
+@click.option("--project-id", help="Project ID to clean (default: current project)")
+@click.option("--all", "clean_all", is_flag=True, help="Delete ALL projects (dangerous!)")
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted without deleting")
+def clean_command(project_id: str | None, clean_all: bool, dry_run: bool) -> None:
+    """Delete indexed data for a project."""
+    # Validate options
+    if clean_all and project_id:
+        click.echo("❌ Cannot use both --all and --project-id", err=True)
+        return
+
+    if not clean_all and not project_id:
+        # Try to get project_id from current directory
+        config_path = Path.cwd() / "nexus_config.json"
+        if config_path.exists():
+            config = NexusConfig.load(config_path)
+            project_id = config.project_id
+        else:
+            click.echo("❌ No project-id specified and no nexus_config.json found", err=True)
+            click.echo("   Use --project-id or run from a project directory", err=True)
+            return
+
+    # Load database
+    config_path = Path.cwd() / "nexus_config.json"
+    if config_path.exists():
+        config = NexusConfig.load(config_path)
+    else:
+        config = NexusConfig.create_new("temp")
+
+    embedder = create_embedder(config)
+    database = NexusDatabase(config, embedder)
+    database.connect()
+
+    try:
+        if clean_all:
+            # Get total count
+            stats = _run_async(database.get_project_stats(None))
+            total = stats.get("total", 0)
+
+            if total == 0:
+                click.echo("⚠️  Database is already empty")
+                return
+
+            click.echo(f"⚠️  WARNING: This will delete ALL {total} documents from the database!")
+            click.echo("")
+
+            if dry_run:
+                click.echo("[DRY RUN] Would delete entire database")
+                return
+
+            if not click.confirm("Are you absolutely sure?"):
+                click.echo("Aborted.")
+                return
+
+            # Delete all by resetting
+            database.reset()
+            click.echo(f"✅ Deleted all {total} documents")
+
+        else:
+            # Delete specific project
+            stats = _run_async(database.get_project_stats(project_id))
+            count = stats.get("total", 0)
+
+            if count == 0:
+                click.echo(f"⚠️  No documents found for project: {project_id}")
+                return
+
+            click.echo(f"Found {count} documents for project: {project_id}")
+            click.echo("")
+            click.echo("Document types:")
+            for doc_type, type_count in stats.items():
+                if doc_type != "total":
+                    click.echo(f"  - {doc_type}: {type_count}")
+            click.echo("")
+
+            if dry_run:
+                click.echo(f"[DRY RUN] Would delete {count} documents for project {project_id}")
+                return
+
+            if not click.confirm(f"Delete {count} documents?"):
+                click.echo("Aborted.")
+                return
+
+            # project_id is guaranteed to be set by validation logic above
+            assert project_id is not None
+            deleted = _run_async(database.delete_by_project(project_id))
+            click.echo(f"✅ Deleted {deleted} documents for project {project_id}")
+
+    except Exception as e:
+        click.echo(f"❌ Error during cleanup: {e!s}", err=True)
 
 
 @cli.command("reindex")

@@ -444,14 +444,25 @@ class NexusDatabase:
         table = self._ensure_connected()
 
         try:
-            query = table.search()
+            # Get all data as pandas DataFrame
+            df = table.to_pandas()
+
+            # Filter by project_id if specified
             if project_id:
-                query = query.where(f"project_id = '{project_id}'")
-            df = query.to_pandas()
+                df = df[df["project_id"] == project_id]
+
+            # Group by document type
+            if len(df) == 0:
+                return {"total": 0}
+
             stats = df.groupby("doc_type").size().to_dict()
             stats["total"] = len(df)
             return stats
-        except Exception:
+        except Exception as e:
+            # Return error details for debugging
+            import logging
+
+            logging.error(f"Failed to get project stats: {e}", exc_info=True)
             return {"total": 0}
 
     async def get_recent_lessons(
