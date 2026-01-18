@@ -901,6 +901,8 @@ async def record_lesson(
         yaml.dump(frontmatter, sort_keys=False).strip(),
         "---",
         "",
+        "# Lesson: " + (problem[:50] + "..." if len(problem) > 50 else problem),
+        "",
         "## Problem",
         problem,
         "",
@@ -1024,7 +1026,9 @@ async def record_insight(
         yaml.dump(frontmatter, sort_keys=False).strip(),
         "---",
         "",
-        f"## {category.title()}",
+        f"# Insight: {category.title()}",
+        "",
+        "## Description",
         description,
         "",
         "## Reasoning",
@@ -1222,7 +1226,7 @@ async def record_implementation(
         yaml.dump(frontmatter, sort_keys=False).strip(),
         "---",
         "",
-        f"# {title}",
+        f"# Implementation: {title}",
         "",
         "## Summary",
         summary,
@@ -1231,7 +1235,6 @@ async def record_implementation(
         approach,
         "",
         "## Design Decisions",
-        "",
     ]
 
     for decision in design_decisions:

@@ -571,6 +571,100 @@ def index_lesson_command(lesson_file: str, quiet: bool) -> None:
             click.echo(f"❌ Failed to index lesson: {e!s}", err=True)
 
 
+@cli.command("export")
+@click.option("--project-id", help="Project ID to export (defaults to current config)")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Output directory (default: ./nexus-export)",
+)
+def export_command(project_id: str | None, output: Path | None) -> None:
+    """Export project knowledge to markdown files."""
+    from .config import NexusConfig
+    from .database import DocumentType, NexusDatabase
+    from .embeddings import create_embedder
+
+    async def _export() -> None:
+        # Load config
+        config = None
+        try:
+            config_path = Path.cwd() / "nexus_config.json"
+            if config_path.exists():
+                config = NexusConfig.load(config_path)
+        except Exception:
+            pass
+
+        effective_project_id = project_id
+        if not effective_project_id and config:
+            effective_project_id = config.project_id
+
+        if not effective_project_id:
+            click.secho("Error: No project-id provided and no nexus_config.json found.", fg="red")
+            return
+
+        # Initialize DB
+        if not config:
+            # Create temporary config for DB access
+            config = NexusConfig.create_new("temp")
+
+        try:
+            embedder = create_embedder(config)
+            db = NexusDatabase(config, embedder)
+            db.connect()
+
+            click.echo(f"Exporting knowledge for project: {effective_project_id}")
+
+            # Get all documents for this project
+            # searching with empty query returns all items for project/type
+            # We fetch strictly structured data types: Lesson, Insight, Implementation
+            types_to_export = [
+                (DocumentType.LESSON, "lessons"),
+                (DocumentType.INSIGHT, "insights"),
+                (DocumentType.IMPLEMENTATION, "implementations"),
+            ]
+
+            base_dir = output or Path.cwd() / "nexus-export"
+            base_dir.mkdir(parents=True, exist_ok=True)
+
+            total_count = 0
+
+            for doc_type, dirname in types_to_export:
+                # We use a hack: search for " " (space) which usually matches everything
+                # or rely on search implementation to support wildcards.
+                # Since vector search always returns something, we use a high limit
+                results = await db.search(
+                    query="*",  # Some vector DBs verify query length
+                    project_id=effective_project_id,
+                    doc_type=doc_type,
+                    limit=1000,
+                )
+
+                if not results:
+                    continue
+
+                type_dir = base_dir / dirname
+                type_dir.mkdir(exist_ok=True)
+
+                click.echo(f"  - Found {len(results)} {dirname}")
+
+                for res in results:
+                    # Use ID from metadata if available, else generate safe name
+                    safe_name = "".join(c for c in res.name if c.isalnum() or c in "-_")
+                    filename = f"{safe_name}.md"
+
+                    file_path = type_dir / filename
+                    file_path.write_text(res.text, encoding="utf-8")
+                    total_count += 1
+
+            click.secho(f"\nSuccessfully exported {total_count} files to {base_dir}", fg="green")
+
+        except Exception as e:
+            click.secho(f"Export failed: {e}", fg="red")
+
+    _run_async(_export())
+
+
 @cli.command("status")
 def status_command() -> None:
     """Show Nexus-Dev status and statistics."""
