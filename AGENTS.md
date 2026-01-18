@@ -4,16 +4,16 @@
 
 ## ⚠️ CRITICAL: RAG Usage Policy
 
-> **MANDATORY**: You MUST use Nexus-Dev RAG tools BEFORE answering ANY question about this project.
+> **MANDATORY**: You MUST me, the AI, use Nexus-Dev RAG tools BEFORE answering ANY question about this project.
 
 **Search-First Approach:**
-- Do NOT answer questions about this codebase based solely on general knowledge.
-- ALWAYS use `search_knowledge`, `search_code`, `search_docs`, or `search_lessons` to find project-specific information.
-- If your first search yields no results:
-  1. **Broaden** your search query
-  2. **Try different content types** (code → docs → lessons)
-  3. **Break down** complex questions into smaller searchable parts
-- Only after exhausting RAG searches should you rely on general programming knowledge, and you **must acknowledge** that you couldn't find project-specific information.
+1.  **Stop**: Do NOT answer questions about this codebase based solely on general knowledge.
+2.  **Search**: ALWAYS use `search_knowledge`, `search_code`, `search_docs`, or `search_lessons` to find project-specific information.
+3.  **Refine**: If your first search yields no results:
+    *   **Broaden** your search query
+    *   **Try different content types** (code → docs → lessons)
+    *   **Break down** complex questions into smaller searchable parts
+4.  **Acknowledge**: Only after exhausting RAG searches should you rely on general programming knowledge, and you **must acknowledge** that you couldn't find project-specific information.
 
 **When to Search:**
 - ✅ User asks about implementation details, architecture, or configuration
@@ -78,7 +78,7 @@ To automatically fix linting and formatting issues:
 make format  # Formats code + auto-fixes lint issues
 ```
 
-> **Important**: The CI runs `ruff check src/ tests/`, `ruff format --check src/ tests/`, and `mypy src/`.  
+> **Important**: The CI runs `ruff check src/ tests/`, `ruff format --check src/ tests/`, and `mypy src/`.
 > Local checks MUST pass before pushing or the CI build will fail.
 
 ## Coding Standards
@@ -119,10 +119,11 @@ make format  # Formats code + auto-fixes lint issues
 
 ## Nexus-Dev Knowledge Base
 
-This project uses **Nexus-Dev** for persistent AI memory. When working on this codebase:
+This project uses **Nexus-Dev** for persistent AI memory.
 
 ### Available MCP Tools
 
+**Core Search:**
 | Tool | Purpose |
 |------|---------|
 | `search_knowledge` | Search all indexed content (code, docs, lessons) |
@@ -131,32 +132,56 @@ This project uses **Nexus-Dev** for persistent AI memory. When working on this c
 | `search_lessons` | Find past problem/solution pairs |
 | `search_insights` | Find past mistakes, discoveries, optimizations |
 | `search_implementations` | Find how features were built |
+
+**Knowledge Capture:**
+| Tool | Purpose |
+|------|---------|
 | `record_lesson` | Save a debugging lesson for future reference |
 | `record_insight` | Capture LLM reasoning, mistakes, backtracking |
 | `record_implementation` | Save implementation summaries with design decisions |
 | `index_file` | Index a new file into the knowledge base |
+
+**Tool & Agent Management:**
+| Tool | Purpose |
+|------|---------|
+| `search_tools` | Find other available MCP tools |
+| `get_tool_schema` | Get details for an MCP tool |
+| `invoke_tool` | Run an MCP tool |
+| `list_agents` | See available autonomous agents |
+| `ask_agent` | Delegate a task to an agent |
+| `refresh_agents` | Reload agent definitions from disk |
+
+**Integrations:**
+| Tool | Purpose |
+|------|---------|
+| `import_github_issues` | Import GitHub issues/PRs for search |
 | `get_project_context` | View project stats and recent lessons |
 
 ### Workflow Guidelines
 
 **At Session Start:**
-```
+```python
 get_project_context()
 ```
 
-**Before Implementing:**
-```
-search_code("<feature description>")
-search_docs("<relevant topic>")
+**Global Code Search (Before Implementing):**
+If you don't know where code lives, search by *responsibility*:
+```python
+# "Which file handles database connections?"
+search_knowledge("database connection handling")
+
+# "Find the class definition for User"
+search_code("class User")
 ```
 
 **When Debugging:**
-```
-search_lessons("<error message or problem description>")
+```python
+search_lessons("error message or problem description")
+search_insights("mistake related to X")
 ```
 
 **After Solving a Bug:**
-```
+```python
 record_lesson(
     problem="<what went wrong>",
     solution="<how you fixed it>",
@@ -168,10 +193,10 @@ record_lesson(
 
 ### Best Practices
 
-1. **Search first** - Always check for existing implementations before writing new code
-2. **Record lessons** - After solving non-trivial bugs, save the solution for future reference
-3. **Index important files** - When creating new modules, index them for searchability
-4. **Check context** - Start sessions with `get_project_context()` to understand the codebase
+1. **Search first** - Always check for existing implementations before writing new code.
+2. **Record lessons** - After solving non-trivial bugs, save the solution for future reference.
+3. **Index important files** - When creating new modules, index them for searchability.
+4. **Check context** - Start sessions with `get_project_context()` to understand the codebase.
 
 ## Automatic Knowledge Capture
 
@@ -182,7 +207,7 @@ record_lesson(
 Call `record_insight` **immediately** when any of the following happens:
 
 **Mistakes** - You tried something that didn't work:
-```
+```python
 record_insight(
     category="mistake",
     description="<what went wrong>",
@@ -191,13 +216,8 @@ record_insight(
 )
 ```
 
-Examples:
-- Used a library version incompatible with Python version
-- Chose an approach that had performance issues
-- Misunderstood an API and had to rewrite
-
 **Backtracking** - You changed direction on an approach:
-```
+```python
 record_insight(
     category="backtrack",
     description="<original approach>",
@@ -207,7 +227,7 @@ record_insight(
 ```
 
 **Discoveries** - You found something non-obvious or useful:
-```
+```python
 record_insight(
     category="discovery",
     description="<what you discovered>",
@@ -216,7 +236,7 @@ record_insight(
 ```
 
 **Optimizations** - You found a better way to do something:
-```
+```python
 record_insight(
     category="optimization",
     description="<optimization made>",
@@ -229,7 +249,7 @@ record_insight(
 
 After finishing a feature, refactor, or significant work, call `record_implementation`:
 
-```
+```python
 record_implementation(
     title="<short title>",
     summary="<what was built - 1-3 sentences>",
@@ -242,14 +262,35 @@ record_implementation(
 )
 ```
 
-**When to call**:
-- After completing a user-requested feature
-- After a significant refactor
-- After fixing a complex bug
-- When finishing implementation from an approved plan
+### GitHub Integration
 
-### Search Before Recording
+Use `import_github_issues` to bring context from Issues and Pull Requests into your local knowledge base.
 
-Before recording, **search first** to avoid duplicates:
-- `search_insights("similar problem")` - Check if this was already encountered
-- `search_implementations("similar feature")` - Check if this was already built
+```python
+import_github_issues(owner="my-org", repo="my-repo", state="open")
+```
+
+Then you can search them:
+```python
+search_knowledge("bug report about login", content_type="github_issue")
+```
+
+### Agent Usage
+
+Nexus-Dev supports autonomous sub-agents.
+
+**Discover Agents:**
+```python
+list_agents()
+```
+
+**Delegate Tasks:**
+```python
+ask_agent(agent_name="nexus_architect", task="Analyze the dependency structure")
+```
+
+**Reload Agents:**
+If you edit an agent's YAML configuration, run:
+```python
+refresh_agents()
+```

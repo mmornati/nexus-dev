@@ -122,20 +122,36 @@ def init_command(
     if ignore_choice != "skip":
         _update_gitignore(cwd, ignore_choice)
 
-    # Print summary
-    click.echo("")
-    click.echo("🎉 Nexus-Dev initialized successfully!")
-    click.echo("")
-    click.echo("Next steps:")
-    click.echo("  1. Index your code: nexus-index src/")
-    click.echo("  2. Index documentation: nexus-index docs/ README.md")
-    click.echo("  3. Configure your AI agent to use the nexus-dev MCP server")
     click.echo("")
     click.echo(f"Project ID: {config.project_id}")
 
     if embedding_provider == "openai":
         click.echo("")
         click.echo("⚠️  Using OpenAI embeddings. Ensure OPENAI_API_KEY is set.")
+
+    click.echo("")
+    click.echo("----------------------------------------------------------------")
+    click.echo("🤖 COPY-PASTE THIS INTO YOUR AGENT'S SYSTEM PROMPT OR RULES:")
+    click.echo("----------------------------------------------------------------")
+    click.echo(f"""
+## Nexus-Dev Knowledge Base
+
+You have access to a local RAG system for this project.
+
+**Project ID:** {config.project_id}
+
+**MANDATORY**: You MUST use `nexus-dev` tools BEFORE answering questions about this code.
+1. `search_knowledge("{config.project_name} <query>")` - Search code, docs, and lessons
+2. `search_code("<class/function_name>")` - Find specific code definitions
+3. `search_lessons("<error/problem>")` - Check for past solutions
+4. `record_lesson(...)` - Save solutions after fixing non-trivial bugs
+
+**Best Practice:**
+- Start every session with `get_project_context()`
+- Search before writing code
+- Record insights with `record_insight()`
+""")
+    click.echo("----------------------------------------------------------------")
 
 
 def _install_hook(cwd: Path) -> None:
