@@ -20,7 +20,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Context
 
 from .agents import AgentConfig, AgentExecutor, AgentManager
-from .chunkers import ChunkerRegistry, CodeChunk
+from .chunkers import ChunkerRegistry, ChunkType, CodeChunk
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
 from .embeddings import EmbeddingProvider, create_embedder
@@ -785,8 +785,28 @@ async def index_file(
         database = _get_database()
         await database.delete_by_file(str(path), effective_project_id)
 
-        # Chunk the file
-        chunks = ChunkerRegistry.chunk_file(path, content)
+        # Special handling for lessons to preserve them as single atomic units
+        # Check if file is in .nexus/lessons or has lesson frontmatter
+        is_lesson = ".nexus/lessons" in str(path) or (
+            content.startswith("---") and "problem:" in content[:200]
+        )
+
+        if is_lesson:
+            doc_type = DocumentType.LESSON
+            chunks = [
+                CodeChunk(
+                    content=content,
+                    chunk_type=ChunkType.LESSON,
+                    name=path.stem,
+                    start_line=1,
+                    end_line=content.count("\n") + 1,
+                    language="markdown",
+                    file_path=str(path),
+                )
+            ]
+        else:
+            # Chunk the file normally
+            chunks = ChunkerRegistry.chunk_file(path, content)
 
         if not chunks:
             return f"No indexable content found in: {file_path}"
@@ -854,6 +874,8 @@ async def record_lesson(
     solution: str,
     context: str | None = None,
     code_snippet: str | None = None,
+    problem_code: str | None = None,
+    solution_code: str | None = None,
     project_id: str | None = None,
 ) -> str:
     """Record a learned lesson from debugging or problem-solving.
@@ -869,7 +891,9 @@ async def record_lesson(
                   Example: "Added null check before calling get_user() and return early if None"
         context: Optional additional context like file path, library, error message.
         code_snippet: Optional code snippet that demonstrates the problem or solution.
-                      This is highly recommended to provide concrete examples.
+                      (Deprecated: use problem_code and solution_code for better structure)
+        problem_code: Code snippet showing the problematic code.
+        solution_code: Code snippet showing the fixed code.
         project_id: Optional project identifier. Uses current project if not specified.
 
     Returns:
@@ -894,6 +918,8 @@ async def record_lesson(
         "timestamp": datetime.now(UTC).isoformat(),
         "project_id": effective_project_id,
         "context": context or "",
+        "problem_code": problem_code or "",
+        "solution_code": solution_code or "",
     }
 
     lesson_parts = [
@@ -913,7 +939,14 @@ async def record_lesson(
     if context:
         lesson_parts.extend(["", "## Context", context])
 
-    if code_snippet:
+    if problem_code:
+        lesson_parts.extend(["", "## Problem Code", "```", problem_code, "```"])
+
+    if solution_code:
+        lesson_parts.extend(["", "## Solution Code", "```", solution_code, "```"])
+
+    # Legacy support
+    if code_snippet and not (problem_code or solution_code):
         lesson_parts.extend(["", "## Code", "```", code_snippet, "```"])
 
     lesson_text = "\n".join(lesson_parts)

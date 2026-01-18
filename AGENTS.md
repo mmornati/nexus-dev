@@ -160,7 +160,9 @@ search_lessons("<error message or problem description>")
 record_lesson(
     problem="<what went wrong>",
     solution="<how you fixed it>",
-    context="<optional: file path or additional info>"
+    context="<optional: file path or additional info>",
+    problem_code="<buggy code snippet>",
+    solution_code="<fixed code snippet>"
 )
 ```
 

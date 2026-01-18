@@ -16,6 +16,7 @@ class ChunkType(str, Enum):
     MODULE = "module"
     DOCUMENTATION = "documentation"
     SECTION = "section"  # For documentation sections
+    LESSON = "lesson"
 
 
 @dataclass
