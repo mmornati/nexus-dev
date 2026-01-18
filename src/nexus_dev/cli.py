@@ -15,11 +15,13 @@ import shutil
 import stat
 from collections import defaultdict
 from collections.abc import Coroutine
+from datetime import datetime
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Literal
 
 import click
+import yaml
 
 from .chunkers import ChunkerRegistry
 from .config import NexusConfig
@@ -357,8 +359,13 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
             else:
                 # Only immediate children
                 for file_path in path.iterdir():
-                    if file_path.is_file() and _should_index(file_path, config):
-                        files_to_index.append(file_path)
+                    if file_path.is_file():
+                        # For explicit paths/directories, we check excludes but ignore
+                        # include patterns to allow indexing "anything I point at"
+                        # unless specifically excluded
+                        is_excluded = _is_excluded(file_path, config)
+                        if not is_excluded:
+                            files_to_index.append(file_path)
 
     if not files_to_index:
         if not quiet:
@@ -380,13 +387,19 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
             # Read file
             content = file_path.read_text(encoding="utf-8")
 
+            # Detect smart type from frontmatter
+            detected_type, metadata = _detect_document_type_and_metadata(content)
+
             # Determine type
-            ext = file_path.suffix.lower()
-            doc_type = (
-                DocumentType.DOCUMENTATION
-                if ext in (".md", ".markdown", ".rst", ".txt")
-                else DocumentType.CODE
-            )
+            if detected_type:
+                doc_type = detected_type
+            else:
+                ext = file_path.suffix.lower()
+                doc_type = (
+                    DocumentType.DOCUMENTATION
+                    if ext in (".md", ".markdown", ".rst", ".txt")
+                    else DocumentType.CODE
+                )
 
             # Delete existing
             _run_async(database.delete_by_file(str(file_path), config.project_id))
@@ -397,7 +410,14 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
             if chunks:
                 # Generate embeddings and store
                 chunk_count = _run_async(
-                    _index_chunks_sync(chunks, config.project_id, doc_type, embedder, database)
+                    _index_chunks_sync(
+                        chunks,
+                        config.project_id,
+                        doc_type,
+                        embedder,
+                        database,
+                        metadata=metadata,
+                    )
                 )
                 total_chunks += chunk_count
 
@@ -422,6 +442,7 @@ async def _index_chunks_sync(
     doc_type: DocumentType,
     embedder: Any,
     database: NexusDatabase,
+    metadata: dict[str, Any] | None = None,
 ) -> int:
     """Index chunks synchronously."""
     if not chunks:
@@ -439,19 +460,34 @@ async def _index_chunks_sync(
             chunk.start_line,
         )
 
-        doc = Document(
-            id=doc_id,
-            text=chunk.get_searchable_text(),
-            vector=embedding,
-            project_id=project_id,
-            file_path=chunk.file_path,
-            doc_type=doc_type,
-            chunk_type=chunk.chunk_type.value,
-            language=chunk.language,
-            name=chunk.name,
-            start_line=chunk.start_line,
-            end_line=chunk.end_line,
-        )
+        # Prepare document kwargs
+        doc_kwargs = {
+            "id": doc_id,
+            "text": chunk.get_searchable_text(),
+            "vector": embedding,
+            "project_id": project_id,
+            "file_path": chunk.file_path,
+            "doc_type": doc_type,
+            "chunk_type": chunk.chunk_type.value,
+            "language": chunk.language,
+            "name": chunk.name,
+            "start_line": chunk.start_line,
+            "end_line": chunk.end_line,
+        }
+
+        # Add metadata if present
+        if metadata and "timestamp" in metadata:
+            try:
+                # Handle ISO format from export
+                if isinstance(metadata["timestamp"], str):
+                    doc_kwargs["timestamp"] = datetime.fromisoformat(metadata["timestamp"])
+                elif isinstance(metadata["timestamp"], datetime):
+                    doc_kwargs["timestamp"] = metadata["timestamp"]
+            except Exception:
+                # Fallback to current time if parse fails
+                pass
+
+        doc = Document(**doc_kwargs)
         documents.append(doc)
 
     await database.upsert_documents(documents)
@@ -482,6 +518,63 @@ def _should_index(file_path: Path, config: NexusConfig) -> bool:
             return True
 
     return False
+
+
+def _is_excluded(file_path: Path, config: NexusConfig) -> bool:
+    """Check if file is explicitly excluded by config patterns."""
+    rel_path = str(file_path.relative_to(Path.cwd()))
+
+    # Check exclude patterns
+    for pattern in config.exclude_patterns:
+        if fnmatch(rel_path, pattern):
+            return True
+
+        # Also check without leading **/ if present (for root matches)
+        if pattern.startswith("**/") and fnmatch(rel_path, pattern[3:]):
+            return True
+
+    return False
+
+
+def _detect_document_type_and_metadata(
+    content: str,
+) -> tuple[DocumentType | None, dict[str, Any]]:
+    """Detect document type and metadata from frontmatter."""
+    if not content.startswith("---\n"):
+        return None, {}
+
+    try:
+        # Extract frontmatter
+        _, frontmatter, _ = content.split("---", 2)
+        data = yaml.safe_load(frontmatter)
+
+        if not isinstance(data, dict):
+            return None, {}
+
+        # Detect type based on keys/values
+        if data.get("category") in ["discovery", "mistake", "backtrack", "optimization"]:
+            return DocumentType.INSIGHT, data
+
+        if "problem" in data and "solution" in data:
+            return DocumentType.LESSON, data
+
+        if (
+            "summary" in data
+            and "approach" in data
+            and ("files_changed" in data or "design_decisions" in data)
+        ):
+            return DocumentType.IMPLEMENTATION, data
+
+        if data.get("type") == "github_issue":
+            return DocumentType.GITHUB_ISSUE, data
+
+        if data.get("type") == "github_pr":
+            return DocumentType.GITHUB_PR, data
+
+        return None, data
+
+    except Exception:
+        return None, {}
 
 
 def _print_file_summary(files: list[Path]) -> None:
