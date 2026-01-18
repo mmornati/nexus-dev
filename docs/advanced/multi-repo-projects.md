@@ -236,4 +236,3 @@ If you previously had separate `nexus_config.json` files in each sub-repository:
 
 - [CLI Reference: nexus-init](../cli/init.md) - Full CLI options
 - [Installation Guide](../getting-started/installation.md) - Initial setup
-- [Workflows](..workflows/index.md) - Development workflows

@@ -94,6 +94,7 @@ nav:
     - Existing Project Onboarding: workflows/existing-project.md
     - Daily Usage Patterns: workflows/daily-usage.md
   - Advanced:
+    - Multi-Repository Projects: advanced/multi-repo-projects.md
     - Custom Agents: advanced/agents.md
     - MCP Gateway Mode: advanced/gateway.md
     - Embedding Providers: advanced/embeddings.md
