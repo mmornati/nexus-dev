@@ -22,12 +22,28 @@ Nexus-Dev is an open-source MCP (Model Context Protocol) server that provides a 
 
 ## Installation
 
+### Isolated Global Installation (Recommended)
+
+To avoid conflicts with project-specific virtual environments, install Nexus-Dev globally using `pipx` or `uv tool`.
+
+```bash
+# Using pipx
+pipx install nexus-dev
+
+# Using uv
+uv tool install nexus-dev
+```
+
+### Development Installation
+
+If you are contributing to Nexus-Dev, you can install it in editable mode:
+
 ```bash
 # Using pip
-pip install nexus-dev
+pip install -e .
 
-# Using uv (recommended)
-uv pip install nexus-dev
+# Using uv
+uv pip install -e .
 ```
 
 ## Quick Start
