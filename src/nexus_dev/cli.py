@@ -32,6 +32,26 @@ from .mcp_client import MCPClientManager, MCPServerConnection
 from .mcp_config import MCPConfig, MCPServerConfig
 
 
+def _find_project_root(start_path: Path | None = None) -> Path | None:
+    """Find project root by walking up to find nexus_config.json.
+
+    Args:
+        start_path: Starting directory (defaults to cwd)
+
+    Returns:
+        Path to project root if found, None otherwise.
+    """
+    current = (start_path or Path.cwd()).resolve()
+
+    for parent in [current] + list(current.parents):
+        if (parent / "nexus_config.json").exists():
+            return parent
+        if parent == parent.parent:  # Reached filesystem root
+            break
+
+    return None
+
+
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run async function in sync context."""
     return asyncio.get_event_loop().run_until_complete(coro)
@@ -50,7 +70,6 @@ def cli() -> None:
 @cli.command("init")
 @click.option(
     "--project-name",
-    prompt="Project name",
     help="Human-readable name for the project",
 )
 @click.option(
@@ -64,18 +83,124 @@ def cli() -> None:
     default=False,
     help="Install pre-commit hook for automatic indexing",
 )
+@click.option(
+    "--link-hook",
+    is_flag=True,
+    default=False,
+    help="Install hook linked to parent project configuration (for multi-repo projects)",
+)
+@click.option(
+    "--discover-repos",
+    is_flag=True,
+    default=False,
+    help="Auto-discover git repositories and offer to install hooks",
+)
 def init_command(
-    project_name: str,
+    project_name: str | None,
     embedding_provider: Literal["openai", "ollama"],
     install_hook: bool,
+    link_hook: bool,
+    discover_repos: bool,
 ) -> None:
     """Initialize Nexus-Dev in the current repository.
 
     Creates configuration file, lessons directory, and optionally installs
     the pre-commit hook for automatic indexing.
+
+    Multi-repository projects:
+    - Use --link-hook to install a hook in a sub-repository that links to parent config
+    - Use --discover-repos to auto-find all git repos and install hooks
     """
     cwd = Path.cwd()
+
+    # Handle --link-hook: Install hook in sub-repo linked to parent config
+    if link_hook:
+        git_dir = cwd / ".git"
+        if not git_dir.exists():
+            click.echo("❌ Not a git repository. Cannot install hook.", err=True)
+            return
+
+        # Find parent project root
+        project_root = _find_project_root(cwd.parent)
+        if not project_root:
+            click.echo("❌ No parent nexus_config.json found.", err=True)
+            click.echo(
+                "   Run 'nexus-init' in the parent directory first, "
+                "or use 'nexus-init' without --link-hook to create a new project."
+            )
+            return
+
+        # Load parent config to display project info
+        parent_config = NexusConfig.load(project_root / "nexus_config.json")
+
+        # Install hook
+        _install_hook(cwd, project_root)
+
+        click.echo("")
+        click.echo(f"✅ Linked to parent project: {parent_config.project_name}")
+        click.echo(f"   Project ID: {parent_config.project_id}")
+        click.echo(f"   Project Root: {project_root}")
+        return
+
+    # Handle --discover-repos: Find and install hooks in all sub-repositories
+    if discover_repos:
+        # Ensure we have a config in current directory
+        config_path = cwd / "nexus_config.json"
+        if not config_path.exists():
+            click.echo("❌ No nexus_config.json in current directory.", err=True)
+            click.echo("   Run 'nexus-init' first to create project configuration.")
+            return
+
+        config = NexusConfig.load(config_path)
+
+        # Find all .git directories
+        git_repos = []
+        for root, dirs, _ in os.walk(cwd):
+            # Skip the root .git if there is one
+            if ".git" in dirs:
+                repo_path = Path(root)
+                if repo_path != cwd:  # Don't include parent directory itself
+                    git_repos.append(repo_path)
+                # Don't traverse into .git directories
+                dirs.remove(".git")
+
+        if not git_repos:
+            click.echo("No git repositories found in subdirectories.")
+            return
+
+        click.echo(f"Found {len(git_repos)} git repositor{'y' if len(git_repos) == 1 else 'ies'}:")
+        for repo in git_repos:
+            rel_path = repo.relative_to(cwd)
+            click.echo(f"  📁 {rel_path}")
+
+        click.echo("")
+        if not click.confirm("Install hooks in all repositories?"):
+            click.echo("Aborted.")
+            return
+
+        # Install hooks
+        installed = 0
+        for repo in git_repos:
+            try:
+                _install_hook(repo, cwd)
+                installed += 1
+                rel_path = repo.relative_to(cwd)
+                click.echo(f"  ✅ {rel_path}")
+            except Exception as e:
+                rel_path = repo.relative_to(cwd)
+                click.echo(f"  ❌ {rel_path}: {e}")
+
+        click.echo("")
+        click.echo(f"✅ Installed hooks in {installed}/{len(git_repos)} repositories")
+        click.echo(f"   All repositories linked to project: {config.project_name}")
+        return
+
+    # Normal initialization flow
     config_path = cwd / "nexus_config.json"
+
+    # Prompt for project name if not provided
+    if not project_name:
+        project_name = click.prompt("Project name")
 
     # Check if already initialized
     if config_path.exists():
@@ -108,7 +233,7 @@ def init_command(
 
     # Optionally install pre-commit hook
     if install_hook:
-        _install_hook(cwd)
+        _install_hook(cwd, cwd)
 
     # Configure .gitignore
     click.echo("")
@@ -154,9 +279,15 @@ You have access to a local RAG system for this project.
     click.echo("----------------------------------------------------------------")
 
 
-def _install_hook(cwd: Path) -> None:
-    """Install pre-commit hook."""
-    git_dir = cwd / ".git"
+def _install_hook(git_dir_parent: Path, project_root: Path | None = None) -> None:
+    """Install pre-commit hook.
+
+    Args:
+        git_dir_parent: Directory containing .git/
+        project_root: Optional project root for multi-repo setups.
+                     If None, assumes git_dir_parent is the project root.
+    """
+    git_dir = git_dir_parent / ".git"
     if not git_dir.exists():
         click.echo("⚠️  Not a git repository. Skipping hook installation.")
         return
@@ -216,7 +347,10 @@ echo "✅ Nexus-Dev indexing complete"
     current_mode = hook_path.stat().st_mode
     hook_path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    click.echo("✅ Installed pre-commit hook")
+    if project_root and project_root != git_dir_parent:
+        click.echo(f"✅ Installed pre-commit hook (linked to {project_root.name}/)")
+    else:
+        click.echo("✅ Installed pre-commit hook")
 
 
 def _update_gitignore(cwd: Path, choice: str) -> None:

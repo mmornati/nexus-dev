@@ -353,6 +353,38 @@ if [ -n "$MODIFIED" ]; then
 fi
 ```
 
+## Multi-Repository Projects
+
+Nexus-Dev supports multi-repository setups where a parent folder contains the nexus configuration and multiple sub-folders contain independent git repositories.
+
+### Quick Setup
+
+```bash
+# Initialize parent project
+cd /path/to/parent-project
+nexus-init --project-name "My Multi-Repo Project"
+
+# Install hooks in all sub-repositories
+nexus-init --discover-repos
+```
+
+Or install hooks manually in each repository:
+
+```bash
+cd sub-repo-1
+nexus-init --link-hook
+
+cd ../sub-repo-2
+nexus-init --link-hook
+```
+
+All repositories:
+- Share a single project ID and knowledge base
+- Index to the parent project's database
+- Store lessons centrally in parent `.nexus/lessons/`
+
+📖 See [Multi-Repository Projects](docs/advanced/multi-repo-projects.md) for detailed guide.
+
 ## Configuring AI Agents
 
 To maximize Nexus-Dev's value, configure your AI coding assistant to use its tools automatically.

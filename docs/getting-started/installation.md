@@ -166,5 +166,6 @@ pip install -e ".[dev]"
 
 ## Next Steps
 
-- [Configuration Guide](configuration.md) - Set up embedding providers and project options
 - [Quick Start](../quickstart.md) - Initialize your first project
+- [Configuration Guide](configuration.md) - Set up embedding providers and project options
+- [Multi-Repository Projects](../advanced/multi-repo-projects.md) - Setup for mono-repo projects

@@ -25,6 +25,8 @@ Creates the configuration file, lessons directory, and optionally installs the p
 | `--project-name` | TEXT | (prompt) | Human-readable name for the project |
 | `--embedding-provider` | CHOICE | `openai` | Embedding provider (`openai` or `ollama`) |
 | `--install-hook / --no-hook` | FLAG | `False` | Install pre-commit hook for automatic indexing |
+| `--link-hook` | FLAG | `False` | Install hook linked to parent project configuration (multi-repo) |
+| `--discover-repos` | FLAG | `False` | Auto-discover git repositories and offer to install hooks |
 
 ---
 
@@ -89,6 +91,48 @@ nexus-init --project-name "My Project" --install-hook
 
 The pre-commit hook automatically indexes modified code files on each commit.
 
+### Multi-repository projects
+
+#### Install hook in sub-repository
+
+```bash
+cd sub-repo
+nexus-init --link-hook
+```
+
+**Output:**
+```
+✅ Installed pre-commit hook (linked to parent-project/)
+✅ Linked to parent project: My Project
+   Project ID: 550e8400-e29b-41d4-a716-446655440000
+   Project Root: /path/to/parent-project
+```
+
+#### Auto-discover all repositories
+
+```bash
+cd parent-project
+nexus-init --discover-repos
+```
+
+**Output:**
+```
+Found 3 git repositories:
+  📁 frontend
+  📁 backend
+  📁 shared
+
+Install hooks in all repositories? [y/N]: y
+  ✅ frontend
+  ✅ backend
+  ✅ shared
+
+✅ Installed hooks in 3/3 repositories
+   All repositories linked to project: My Project
+```
+
+See [Multi-Repository Projects](../advanced/multi-repo-projects.md) for detailed guide.
+
 ---
 
 ## Files Created
@@ -118,4 +162,5 @@ During initialization, you're prompted to configure `.gitignore`:
 
 - [nexus-index](index-cmd.md) - Index files after initialization
 - [nexus-status](status.md) - Check project setup
+- [Multi-Repository Projects](../advanced/multi-repo-projects.md) - Multi-repo setup guide
 - [Configuration Guide](../getting-started/configuration.md) - Detailed configuration options

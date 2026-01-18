@@ -1,10 +1,33 @@
 #!/bin/bash
 # Nexus-Dev Pre-commit Hook
-# This hook is OPTIONAL - install via: nexus-init --install-hook
+# This hook is OPTIONAL - install via: nexus-init --install-hook or --link-hook
 
 set -e
 
-echo "🧠 Nexus-Dev: Checking for files to index..."
+# Find project root by walking up to find nexus_config.json
+REPO_ROOT=$(git rev-parse --show-toplevel)
+PROJECT_ROOT="$REPO_ROOT"
+
+# Walk up from repo root to find nexus_config.json
+CURRENT="$REPO_ROOT"
+while [ "$CURRENT" != "/" ]; do
+    if [ -f "$CURRENT/nexus_config.json" ]; then
+        PROJECT_ROOT="$CURRENT"
+        break
+    fi
+    CURRENT=$(dirname "$CURRENT")
+done
+
+# Verify we found a config
+if [ ! -f "$PROJECT_ROOT/nexus_config.json" ]; then
+    echo "⚠️  Nexus-Dev: No nexus_config.json found. Skipping indexing."
+    exit 0
+fi
+
+# Change to project root for indexing
+cd "$PROJECT_ROOT" || exit 0
+
+echo "🧠 Nexus-Dev: Indexing from project root: $PROJECT_ROOT"
 
 # Get list of modified/added code files
 MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(py|js|jsx|ts|tsx|java)$' || true)
