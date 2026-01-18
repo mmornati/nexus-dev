@@ -10,6 +10,22 @@ Get up and running with Nexus-Dev in 5 minutes.
 
 ## Installation
 
+### Isolated Global Installation (Recommended)
+
+To avoid conflicts with project-specific virtual environments, install Nexus-Dev globally using `pipx` or `uv tool`.
+
+```bash
+# Using pipx
+pipx install nexus-dev
+
+# Using uv
+uv tool install nexus-dev
+```
+
+### Local Installation
+
+If you prefer a standard installation:
+
 ```bash
 pip install nexus-dev
 ```

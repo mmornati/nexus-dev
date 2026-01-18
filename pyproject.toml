@@ -73,6 +73,7 @@ packages = ["src/nexus_dev"]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "src/nexus_dev/agent_templates" = "nexus_dev/agent_templates"
+"src/nexus_dev/templates" = "nexus_dev/templates"
 
 [tool.ruff]
 line-length = 100

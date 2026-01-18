@@ -154,7 +154,7 @@ def _install_hook(cwd: Path) -> None:
         return
 
     # Copy template
-    template_path = Path(__file__).parent.parent.parent / "templates" / "pre-commit-hook"
+    template_path = Path(__file__).parent / "templates" / "pre-commit-hook"
     if template_path.exists():
         shutil.copy(template_path, hook_path)
     else:
