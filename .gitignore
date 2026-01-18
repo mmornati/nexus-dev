@@ -75,7 +75,8 @@ dmypy.json
 .ruff_cache/
 
 # Nexus-Dev specific
-.nexus/
+!.nexus/**
+.nexus/mcp_config.json
 nexus_config.json
 ~/.nexus-dev/
 
