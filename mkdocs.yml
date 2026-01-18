@@ -1,0 +1,115 @@
+site_name: Nexus-Dev Documentation
+site_description: Persistent Memory for AI Coding Agents - Local RAG system for GitHub Copilot, Cursor, and Windsurf
+site_url: https://mmornati.github.io/nexus-dev
+site_author: Marco Mornati
+
+repo_name: mmornati/nexus-dev
+repo_url: https://github.com/mmornati/nexus-dev
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Light mode - teal/cyan for "knowledge/memory" feel
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode - deep teal for developer focus
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - admonition
+  - pymdownx.details
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+  - CLI Reference:
+    - Overview: cli/index.md
+    - nexus-init: cli/init.md
+    - nexus-index: cli/index-cmd.md
+    - nexus-status: cli/status.md
+    - nexus-search: cli/search.md
+    - nexus-export: cli/export.md
+    - nexus-reindex: cli/reindex.md
+    - nexus-import-github: cli/import-github.md
+    - nexus-mcp: cli/mcp.md
+    - nexus-agent: cli/agent.md
+    - nexus-index-mcp: cli/index-mcp.md
+  - MCP Tools:
+    - Overview: tools/index.md
+    - Search Tools: tools/search.md
+    - Indexing Tools: tools/indexing.md
+    - Learning Tools: tools/learning.md
+    - Gateway Tools: tools/gateway.md
+    - Agent Tools: tools/agents.md
+  - Workflows:
+    - New Project Setup: workflows/new-project.md
+    - Existing Project Onboarding: workflows/existing-project.md
+    - Daily Usage Patterns: workflows/daily-usage.md
+  - Advanced:
+    - Custom Agents: advanced/agents.md
+    - MCP Gateway Mode: advanced/gateway.md
+    - Embedding Providers: advanced/embeddings.md
+    - GitHub Integration: advanced/github.md
+  - Reference:
+    - Architecture: reference/architecture.md
+    - Troubleshooting: reference/troubleshooting.md
+    - Contributing: reference/contributing.md
+
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mmornati
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/mmornati

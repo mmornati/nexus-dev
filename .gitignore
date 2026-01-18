@@ -83,3 +83,6 @@ nexus_config.json
 # OS
 .DS_Store
 Thumbs.db
+
+# MkDocs
+site/
