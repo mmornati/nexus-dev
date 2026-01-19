@@ -23,6 +23,7 @@ class MCPServerConfig:
     headers: dict[str, str] = field(default_factory=dict)
     timeout: float = 30.0  # Tool execution timeout
     connect_timeout: float = 10.0  # Connection timeout
+    max_concurrent: int | None = None  # Max concurrent invocations (None = use gateway default)
 
 
 @dataclass
@@ -31,6 +32,7 @@ class GatewaySettings:
 
     default_timeout: float = 30.0
     max_concurrent_connections: int = 5
+    shutdown_timeout: float = 5.0  # Graceful shutdown timeout
 
 
 @dataclass
@@ -77,6 +79,7 @@ class MCPConfig:
                 headers=cfg.get("headers", {}),
                 timeout=cfg.get("timeout", 30.0),
                 connect_timeout=cfg.get("connect_timeout", 10.0),
+                max_concurrent=cfg.get("max_concurrent"),
             )
             for name, cfg in data["servers"].items()
         }
@@ -88,6 +91,7 @@ class MCPConfig:
         gateway = GatewaySettings(
             default_timeout=gateway_data.get("default_timeout", 30.0),
             max_concurrent_connections=gateway_data.get("max_concurrent_connections", 5),
+            shutdown_timeout=gateway_data.get("shutdown_timeout", 5.0),
         )
 
         return cls(
@@ -144,6 +148,7 @@ class MCPConfig:
                         "headers": server.headers,
                         "timeout": server.timeout,
                         "connect_timeout": server.connect_timeout,
+                        "max_concurrent": server.max_concurrent,
                     }.items()
                     if v is not None
                 }
@@ -154,6 +159,7 @@ class MCPConfig:
             "gateway": {
                 "default_timeout": self.gateway.default_timeout,
                 "max_concurrent_connections": self.gateway.max_concurrent_connections,
+                "shutdown_timeout": self.gateway.shutdown_timeout,
             },
         }
 

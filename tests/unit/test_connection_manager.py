@@ -28,325 +28,473 @@ def mock_config():
     )
 
 
-class TestMCPConnectionLifecycle:
-    """Tests for MCPConnection connect/disconnect lifecycle."""
+@pytest.fixture
+def mock_sse_config():
+    """Mock SSE server config."""
+    return MCPServerConfig(
+        transport="sse",
+        url="http://localhost:8000/sse",
+        headers={"Authorization": "Bearer test"},
+    )
+
+
+@pytest.fixture
+def mock_http_config():
+    """Mock HTTP server config."""
+    return MCPServerConfig(
+        transport="http",
+        url="http://localhost:8000/mcp",
+        timeout=30.0,
+    )
+
+
+class TestMCPConnectionProperties:
+    """Tests for MCPConnection properties and initialization."""
+
+    def test_default_values(self, mock_config):
+        """Test default initialization values."""
+        conn = MCPConnection(name="test", config=mock_config)
+
+        assert conn.name == "test"
+        assert conn.max_concurrent == 5
+        assert conn.max_retries == 3
+        assert conn.retry_delay == 1.0
+        assert conn.active_invocations == 0
+
+    def test_custom_max_concurrent(self, mock_config):
+        """Test custom max_concurrent setting."""
+        conn = MCPConnection(name="test", config=mock_config, max_concurrent=10)
+
+        assert conn.max_concurrent == 10
+
+    def test_timeout_property(self, mock_config):
+        """Test timeout property returns config value."""
+        mock_config.timeout = 60.0
+        conn = MCPConnection(name="test", config=mock_config)
+
+        assert conn.timeout == 60.0
+
+    def test_connect_timeout_property(self, mock_config):
+        """Test connect_timeout property returns config value."""
+        mock_config.connect_timeout = 15.0
+        conn = MCPConnection(name="test", config=mock_config)
+
+        assert conn.connect_timeout == 15.0
+
+
+class TestMCPConnectionInvocation:
+    """Tests for tool invocation with per-call connections."""
 
     @patch("nexus_dev.gateway.connection_manager.stdio_client")
     @patch("nexus_dev.gateway.connection_manager.ClientSession")
     @pytest.mark.asyncio
-    async def test_connection_lifecycle(self, mock_session_cls, mock_stdio, mock_config):
-        """Test connection establishment and teardown."""
-        # Mock context managers
-        mock_transport_cm = AsyncMock()
-        mock_stdio.return_value = mock_transport_cm
-        mock_transport_cm.__aenter__.return_value = (MagicMock(), MagicMock())
-
-        mock_session_cm = AsyncMock()
-        mock_session_cls.return_value = mock_session_cm
+    async def test_invoke_with_timeout_success(self, mock_session_cls, mock_stdio, mock_config):
+        """Test successful tool invocation."""
+        # Setup mocks
         mock_session = AsyncMock(spec=ClientSession)
-        mock_session_cm.__aenter__.return_value = mock_session
-
-        conn = MCPConnection(name="test", config=mock_config)
-
-        # Test connect
-        session = await conn.connect()
-
-        assert session == mock_session
-        assert mock_transport_cm.__aenter__.called
-        assert mock_session_cm.__aenter__.called
-        assert mock_session.initialize.called
-
-        # Test disconnect
-        await conn.disconnect()
-
-        assert mock_session_cm.__aexit__.called
-        assert mock_transport_cm.__aexit__.called
-        assert conn.session is None
-
-
-class TestMCPConnectionPing:
-    """Tests for connection health check via ping."""
-
-    @pytest.mark.asyncio
-    async def test_ping_healthy_session_reused(self, mock_config):
-        """Test that healthy session is reused after ping."""
-        conn = MCPConnection(name="test", config=mock_config)
-        mock_session = AsyncMock(spec=ClientSession)
-        mock_session.send_ping = AsyncMock()
-        conn.session = mock_session
-
-        # Connect should return existing session after successful ping
-        result = await conn.connect()
-
-        assert result == mock_session
-        mock_session.send_ping.assert_called_once()
-
-    @patch("nexus_dev.gateway.connection_manager.stdio_client")
-    @patch("nexus_dev.gateway.connection_manager.ClientSession")
-    @pytest.mark.asyncio
-    async def test_ping_lost_connection_reconnects(self, mock_session_cls, mock_stdio, mock_config):
-        """Test that lost connection triggers reconnection."""
-        # Setup mock for reconnection
-        mock_transport_cm = AsyncMock()
-        mock_stdio.return_value = mock_transport_cm
-        mock_transport_cm.__aenter__.return_value = (MagicMock(), MagicMock())
-
-        mock_session_cm = AsyncMock()
-        mock_session_cls.return_value = mock_session_cm
-        new_session = AsyncMock(spec=ClientSession)
-        mock_session_cm.__aenter__.return_value = new_session
-
-        # Setup connection with a session that will fail ping
-        conn = MCPConnection(name="test", config=mock_config)
-        old_session = AsyncMock(spec=ClientSession)
-        old_session.send_ping = AsyncMock(side_effect=Exception("Connection lost"))
-        conn.session = old_session
-
-        # Connect should detect lost connection and reconnect
-        result = await conn.connect()
-
-        assert result == new_session
-        old_session.send_ping.assert_called_once()
-
-
-class TestMCPConnectionRetry:
-    """Tests for connection retry logic."""
-
-    @patch("nexus_dev.gateway.connection_manager.stdio_client")
-    @patch("nexus_dev.gateway.connection_manager.ClientSession")
-    @pytest.mark.asyncio
-    async def test_retry_success_on_second_attempt(self, mock_session_cls, mock_stdio, mock_config):
-        """Test successful connection after initial failure."""
-        # First attempt fails, second succeeds
-        mock_transport_cm = AsyncMock()
-        mock_transport_cm.__aenter__.side_effect = [
-            Exception("First attempt failed"),
-            (MagicMock(), MagicMock()),
-        ]
-        mock_stdio.return_value = mock_transport_cm
-
-        mock_session_cm = AsyncMock()
-        mock_session_cls.return_value = mock_session_cm
-        mock_session = AsyncMock(spec=ClientSession)
-        mock_session_cm.__aenter__.return_value = mock_session
-
-        conn = MCPConnection(name="test", config=mock_config, retry_delay=0.01)
-
-        session = await conn.connect()
-
-        assert session == mock_session
-        assert mock_transport_cm.__aenter__.call_count == 2
-
-    @patch("nexus_dev.gateway.connection_manager.stdio_client")
-    @pytest.mark.asyncio
-    async def test_max_retries_exceeded_raises_error(self, mock_stdio, mock_config):
-        """Test MCPConnectionError after max retries."""
-        mock_transport_cm = AsyncMock()
-        mock_transport_cm.__aenter__.side_effect = Exception("Connection failed")
-        mock_stdio.return_value = mock_transport_cm
-
-        conn = MCPConnection(name="test", config=mock_config, max_retries=3, retry_delay=0.01)
-
-        with pytest.raises(MCPConnectionError) as exc_info:
-            await conn.connect()
-
-        assert "Failed to connect to test after 3 attempts" in str(exc_info.value)
-        assert mock_transport_cm.__aenter__.call_count == 3
-
-    @patch("nexus_dev.gateway.connection_manager.asyncio.sleep")
-    @patch("nexus_dev.gateway.connection_manager.stdio_client")
-    @pytest.mark.asyncio
-    async def test_exponential_backoff(self, mock_stdio, mock_sleep, mock_config):
-        """Test that retry delays use exponential backoff."""
-        mock_transport_cm = AsyncMock()
-        mock_transport_cm.__aenter__.side_effect = Exception("Connection failed")
-        mock_stdio.return_value = mock_transport_cm
-        mock_sleep.return_value = None
-
-        conn = MCPConnection(name="test", config=mock_config, max_retries=4, retry_delay=1.0)
-
-        with pytest.raises(MCPConnectionError):
-            await conn.connect()
-
-        # Check exponential backoff: 1.0, 2.0, 4.0 (3 sleeps for 4 attempts)
-        assert mock_sleep.call_count == 3
-        calls = [call.args[0] for call in mock_sleep.call_args_list]
-        assert calls == [1.0, 2.0, 4.0]
-
-
-class TestMCPConnectionTimeout:
-    """Tests for timeout functionality."""
-
-    @pytest.mark.asyncio
-    async def test_invoke_with_timeout_success(self, mock_config):
-        """Test successful tool invocation within timeout."""
-        mock_config.timeout = 5.0
-        conn = MCPConnection(name="test", config=mock_config)
-        mock_session = AsyncMock(spec=ClientSession)
-        mock_session.send_ping = AsyncMock()
+        mock_session.initialize = AsyncMock()
         mock_session.call_tool = AsyncMock(return_value="result")
-        conn.session = mock_session
 
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        conn = MCPConnection(name="test", config=mock_config)
         result = await conn.invoke_with_timeout("my_tool", {"arg": "value"})
 
         assert result == "result"
         mock_session.call_tool.assert_called_once_with("my_tool", {"arg": "value"})
 
+    @patch("nexus_dev.gateway.connection_manager.stdio_client")
+    @patch("nexus_dev.gateway.connection_manager.ClientSession")
+    @pytest.mark.asyncio
+    async def test_invoke_tracks_active_count(self, mock_session_cls, mock_stdio, mock_config):
+        """Test that active invocation count is tracked correctly."""
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.initialize = AsyncMock()
+
+        async def slow_tool(*args, **kwargs):
+            await asyncio.sleep(0.1)
+            return "result"
+
+        mock_session.call_tool = slow_tool
+
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        conn = MCPConnection(name="test", config=mock_config)
+        assert conn.active_invocations == 0
+
+        # Start invocation but don't await
+        task = asyncio.create_task(conn.invoke_with_timeout("tool", {}))
+        await asyncio.sleep(0.05)
+
+        # Should be active during invocation
+        assert conn.active_invocations == 1
+
+        await task
+
+        # Should be 0 after completion
+        assert conn.active_invocations == 0
+
     @pytest.mark.asyncio
     async def test_invoke_with_timeout_raises_timeout_error(self, mock_config):
         """Test MCPTimeoutError when tool exceeds timeout."""
         mock_config.timeout = 0.1
-        connection = MCPConnection(name="test", config=mock_config)
+        conn = MCPConnection(name="test", config=mock_config)
 
-        # Create properly async mock for session
-        mock_session = MagicMock(spec=ClientSession)
-        mock_session.send_ping = AsyncMock(return_value=None)
-        mock_session.initialize = AsyncMock(return_value=None)
-
-        # The tool call itself needs to hang
         async def slow_tool(*args, **kwargs):
             await asyncio.sleep(0.5)
             return "result"
 
-        mock_session.call_tool = MagicMock(side_effect=slow_tool)
+        # Mock the scoped session to return a slow session
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.call_tool = slow_tool
 
-        # Mock connect to return our session
-        connection.connect = AsyncMock(return_value=mock_session)
-        connection.session = mock_session
+        with patch.object(conn, "_scoped_session") as mock_scoped:
+            mock_scoped.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_scoped.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        with pytest.raises(MCPTimeoutError, match="timed out"):
-            await connection.invoke_with_timeout("tool", {})
-
-    @pytest.mark.asyncio
-    async def test_connect_uses_config_timeout(self, mock_config):
-        """Test that connect uses the configured connect_timeout."""
-        # Set a very short connect timeout
-        mock_config.connect_timeout = 0.05
-        connection = MCPConnection(name="test", config=mock_config)
-        connection.retry_delay = 0.01  # Speed up retries
-
-        async def slow_connect():
-            await asyncio.sleep(0.2)
-            return MagicMock()
-
-        # Mock _do_connect_impl to be slow
-        connection._do_connect_impl = AsyncMock(side_effect=slow_connect)
-
-        # We anticipate connection failure due to timeout
-        with pytest.raises(MCPConnectionError) as excinfo:
-            await connection.connect()
-
-        assert "due to timeout after 0.05s" in str(excinfo.value)
+            with pytest.raises(MCPTimeoutError, match="timed out"):
+                await conn.invoke_with_timeout("tool", {})
 
 
-class TestMCPConnectionLogging:
-    """Tests for logging output."""
-
-    @patch("nexus_dev.gateway.connection_manager.stdio_client")
-    @pytest.mark.asyncio
-    async def test_logs_warning_on_retry(self, mock_stdio, mock_config, caplog):
-        """Test warning logs during retry attempts."""
-        mock_transport_cm = AsyncMock()
-        mock_transport_cm.__aenter__.side_effect = Exception("Connection failed")
-        mock_stdio.return_value = mock_transport_cm
-
-        conn = MCPConnection(
-            name="test-server", config=mock_config, max_retries=2, retry_delay=0.01
-        )
-
-        with caplog.at_level(logging.WARNING), pytest.raises(MCPConnectionError):
-            await conn.connect()
-
-        assert "[test-server] Connection attempt 1/2 failed" in caplog.text
-        assert "[test-server] Connection attempt 2/2 failed" in caplog.text
+class TestMCPConnectionConcurrency:
+    """Tests for concurrent invocation handling."""
 
     @patch("nexus_dev.gateway.connection_manager.stdio_client")
     @patch("nexus_dev.gateway.connection_manager.ClientSession")
     @pytest.mark.asyncio
-    async def test_logs_info_on_connect(self, mock_session_cls, mock_stdio, mock_config, caplog):
-        """Test info log on successful connection."""
-        mock_transport_cm = AsyncMock()
-        mock_stdio.return_value = mock_transport_cm
-        mock_transport_cm.__aenter__.return_value = (MagicMock(), MagicMock())
+    async def test_concurrent_invocations_complete_independently(
+        self, mock_session_cls, mock_stdio, mock_config
+    ):
+        """Test that multiple concurrent invocations complete independently."""
+        call_order = []
 
-        mock_session_cm = AsyncMock()
-        mock_session_cls.return_value = mock_session_cm
+        async def tracked_tool(tool_name, args):
+            call_order.append(f"start_{tool_name}")
+            await asyncio.sleep(0.05)
+            call_order.append(f"end_{tool_name}")
+            return f"result_{tool_name}"
+
         mock_session = AsyncMock(spec=ClientSession)
-        mock_session_cm.__aenter__.return_value = mock_session
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = tracked_tool
 
-        conn = MCPConnection(name="test-server", config=mock_config)
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        with caplog.at_level(logging.INFO):
-            await conn.connect()
+        conn = MCPConnection(name="test", config=mock_config, max_concurrent=3)
 
-        assert "[test-server] Connection successful" in caplog.text
+        # Run 3 concurrent invocations
+        results = await asyncio.gather(
+            conn.invoke_with_timeout("tool1", {}),
+            conn.invoke_with_timeout("tool2", {}),
+            conn.invoke_with_timeout("tool3", {}),
+        )
+
+        # All should complete
+        assert len(results) == 3
+
+        # All starts should happen before all ends (parallel execution)
+        starts = [x for x in call_order if x.startswith("start_")]
+        ends = [x for x in call_order if x.startswith("end_")]
+        assert len(starts) == 3
+        assert len(ends) == 3
+
+    @patch("nexus_dev.gateway.connection_manager.stdio_client")
+    @patch("nexus_dev.gateway.connection_manager.ClientSession")
+    @pytest.mark.asyncio
+    async def test_semaphore_limits_concurrent_connections(
+        self, mock_session_cls, mock_stdio, mock_config
+    ):
+        """Test that max_concurrent setting limits parallel connections."""
+        active_count = []
+        max_active = 0
+
+        async def count_active_tool(tool_name, args):
+            nonlocal max_active
+            active_count.append(1)
+            current = len(active_count)
+            if current > max_active:
+                max_active = current
+            await asyncio.sleep(0.05)
+            active_count.pop()
+            return "result"
+
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = count_active_tool
+
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        # Limit to 2 concurrent
+        conn = MCPConnection(name="test", config=mock_config, max_concurrent=2)
+
+        # Try to run 5 concurrent invocations
+        await asyncio.gather(*[conn.invoke_with_timeout(f"tool{i}", {}) for i in range(5)])
+
+        # Max active should never exceed 2
+        assert max_active <= 2
+
+
+class TestMCPConnectionRetry:
+    """Tests for connection retry logic."""
+
+    @patch("nexus_dev.gateway.connection_manager.asyncio.sleep")
+    @pytest.mark.asyncio
+    async def test_retry_on_connection_failure(self, mock_sleep, mock_config):
+        """Test retry logic when connection fails."""
+        from contextlib import asynccontextmanager
+
+        mock_sleep.return_value = None
+        conn = MCPConnection(name="test", config=mock_config, max_retries=3, retry_delay=0.01)
+
+        attempt_count = 0
+
+        @asynccontextmanager
+        async def failing_session():
+            nonlocal attempt_count
+            attempt_count += 1
+            if attempt_count < 3:
+                raise ConnectionError("Connection failed")
+            # Return working mock on third attempt
+            mock_session = AsyncMock(spec=ClientSession)
+            mock_session.call_tool = AsyncMock(return_value="result")
+            yield mock_session
+
+        with patch.object(conn, "_scoped_session", failing_session):
+            result = await conn.invoke_with_timeout("tool", {})
+
+        assert result == "result"
+        assert attempt_count == 3
+
+        assert result == "result"
+        assert attempt_count == 3
 
     @pytest.mark.asyncio
-    async def test_logs_warning_on_lost_connection(self, mock_config, caplog):
-        """Test warning log when connection is lost."""
-        conn = MCPConnection(name="test-server", config=mock_config, max_retries=1)
+    async def test_max_retries_exceeded_raises_error(self, mock_config):
+        """Test MCPConnectionError after max retries."""
+        conn = MCPConnection(name="test", config=mock_config, max_retries=2, retry_delay=0.01)
+
+        with patch.object(conn, "_scoped_session") as mock_scoped:
+            mock_scoped.return_value.__aenter__ = AsyncMock(
+                side_effect=ConnectionError("Always fails")
+            )
+            mock_scoped.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            with pytest.raises(MCPConnectionError) as exc_info:
+                await conn.invoke_with_timeout("tool", {})
+
+        assert "Failed to connect to test after 2 attempts" in str(exc_info.value)
+
+
+class TestMCPConnectionGracefulShutdown:
+    """Tests for graceful shutdown functionality."""
+
+    @pytest.mark.asyncio
+    async def test_wait_for_completion_no_active(self, mock_config):
+        """Test wait_for_completion returns immediately when no active invocations."""
+        conn = MCPConnection(name="test", config=mock_config)
+
+        result = await conn.wait_for_completion(timeout=1.0)
+
+        assert result is True
+
+    @patch("nexus_dev.gateway.connection_manager.stdio_client")
+    @patch("nexus_dev.gateway.connection_manager.ClientSession")
+    @pytest.mark.asyncio
+    async def test_wait_for_completion_waits_for_active(
+        self, mock_session_cls, mock_stdio, mock_config
+    ):
+        """Test wait_for_completion waits for active invocations."""
         mock_session = AsyncMock(spec=ClientSession)
-        mock_session.send_ping = AsyncMock(side_effect=Exception("Connection lost"))
-        conn.session = mock_session
+        mock_session.initialize = AsyncMock()
 
-        with caplog.at_level(logging.WARNING), pytest.raises(MCPConnectionError):
-            await conn.connect()
+        async def slow_tool(*args, **kwargs):
+            await asyncio.sleep(0.2)
+            return "result"
 
-        assert "[test-server] Connection lost or ping failed, reconnecting" in caplog.text
+        mock_session.call_tool = slow_tool
+
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        conn = MCPConnection(name="test", config=mock_config)
+
+        # Start a slow invocation
+        invoke_task = asyncio.create_task(conn.invoke_with_timeout("tool", {}))
+        await asyncio.sleep(0.05)
+
+        # Wait should succeed
+        wait_task = asyncio.create_task(conn.wait_for_completion(timeout=5.0))
+        result = await wait_task
+
+        assert result is True
+        await invoke_task  # Cleanup
+
+    @pytest.mark.asyncio
+    async def test_wait_for_completion_timeout(self, mock_config):
+        """Test wait_for_completion returns False on timeout."""
+        conn = MCPConnection(name="test", config=mock_config)
+        conn._active_count = 1  # Simulate active invocation
+
+        result = await conn.wait_for_completion(timeout=0.1)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_disconnect_signals_shutdown(self, mock_config):
+        """Test disconnect sets shutdown event."""
+        conn = MCPConnection(name="test", config=mock_config)
+
+        assert not conn._shutdown_event.is_set()
+
+        await conn.disconnect()
+
+        assert conn._shutdown_event.is_set()
 
 
 class TestConnectionManager:
     """Tests for ConnectionManager pooling."""
 
-    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
     @pytest.mark.asyncio
-    async def test_connection_reuse(self, mock_conn_cls, mock_config):
-        """Test connection reuse."""
-        manager = ConnectionManager()
-        mock_conn_instance = AsyncMock()
-        mock_conn_instance.connect.return_value = AsyncMock(spec=ClientSession)
-        mock_conn_cls.return_value = mock_conn_instance
-
-        # First call - creates new connection
-        s1 = await manager.get_connection("s1", mock_config)
-        assert mock_conn_cls.call_count == 1
-
-        # Second call - reuses connection
-        s2 = await manager.get_connection("s1", mock_config)
-        assert mock_conn_cls.call_count == 1
-        assert s1 == s2
-
-    @pytest.mark.asyncio
-    async def test_disconnect_all(self, mock_config):
-        """Test disconnecting all servers."""
+    async def test_connection_creation(self, mock_config):
+        """Test connection is created on first request."""
         manager = ConnectionManager()
 
-        mock_conn1 = AsyncMock()
-        mock_conn2 = AsyncMock()
+        conn = await manager.get_connection("test", mock_config)
 
-        manager._connections["c1"] = mock_conn1
-        manager._connections["c2"] = mock_conn2
+        assert conn.name == "test"
+        assert "test" in manager._connections
 
-        await manager.disconnect_all()
+    @pytest.mark.asyncio
+    async def test_connection_reuse(self, mock_config):
+        """Test same connection is returned for same server."""
+        manager = ConnectionManager()
 
-        assert mock_conn1.disconnect.called
-        assert mock_conn2.disconnect.called
+        conn1 = await manager.get_connection("test", mock_config)
+        conn2 = await manager.get_connection("test", mock_config)
+
+        assert conn1 is conn2
+
+    @pytest.mark.asyncio
+    async def test_different_connections_for_different_servers(self, mock_config):
+        """Test different connections for different servers."""
+        manager = ConnectionManager()
+
+        conn1 = await manager.get_connection("server1", mock_config)
+        conn2 = await manager.get_connection("server2", mock_config)
+
+        assert conn1 is not conn2
+        assert conn1.name == "server1"
+        assert conn2.name == "server2"
+
+    @pytest.mark.asyncio
+    async def test_default_max_concurrent(self, mock_config):
+        """Test default max_concurrent is applied."""
+        manager = ConnectionManager(default_max_concurrent=10)
+
+        conn = await manager.get_connection("test", mock_config)
+
+        assert conn.max_concurrent == 10
+
+    @pytest.mark.asyncio
+    async def test_per_server_max_concurrent_override(self, mock_config):
+        """Test per-server max_concurrent overrides default."""
+        mock_config.max_concurrent = 3
+        manager = ConnectionManager(default_max_concurrent=10)
+
+        conn = await manager.get_connection("test", mock_config)
+
+        assert conn.max_concurrent == 3
+
+    @pytest.mark.asyncio
+    async def test_disconnect_all_graceful(self, mock_config):
+        """Test graceful disconnect waits for invocations."""
+        manager = ConnectionManager(shutdown_timeout=0.5)
+
+        # Create a connection
+        _conn = await manager.get_connection("test", mock_config)
+
+        # Disconnect all
+        await manager.disconnect_all(graceful=True)
+
         assert len(manager._connections) == 0
 
-    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
     @pytest.mark.asyncio
-    async def test_invoke_tool(self, mock_conn_cls, mock_config):
-        """Test invoke_tool uses connection and calls tool with timeout."""
+    async def test_disconnect_all_non_graceful(self, mock_config):
+        """Test non-graceful disconnect clears immediately."""
         manager = ConnectionManager()
 
-        mock_conn_instance = AsyncMock()
-        mock_conn_instance.invoke_with_timeout = AsyncMock(return_value="result")
-        mock_conn_cls.return_value = mock_conn_instance
+        await manager.get_connection("test", mock_config)
+        await manager.disconnect_all(graceful=False)
+
+        assert len(manager._connections) == 0
+
+
+class TestConnectionManagerInvokeTool:
+    """Tests for ConnectionManager.invoke_tool."""
+
+    @patch("nexus_dev.gateway.connection_manager.stdio_client")
+    @patch("nexus_dev.gateway.connection_manager.ClientSession")
+    @pytest.mark.asyncio
+    async def test_invoke_tool_creates_connection(self, mock_session_cls, mock_stdio, mock_config):
+        """Test invoke_tool creates connection if needed."""
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = AsyncMock(return_value="result")
+
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        manager = ConnectionManager()
 
         result = await manager.invoke_tool("test", mock_config, "my_tool", {"arg": "value"})
 
         assert result == "result"
-        mock_conn_instance.invoke_with_timeout.assert_called_once_with("my_tool", {"arg": "value"})
+        assert "test" in manager._connections
+
+    @patch("nexus_dev.gateway.connection_manager.stdio_client")
+    @patch("nexus_dev.gateway.connection_manager.ClientSession")
+    @pytest.mark.asyncio
+    async def test_concurrent_invoke_tool_same_server(
+        self, mock_session_cls, mock_stdio, mock_config
+    ):
+        """Test concurrent tool invocations on same server."""
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = AsyncMock(return_value="result")
+
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        manager = ConnectionManager()
+
+        results = await asyncio.gather(
+            manager.invoke_tool("test", mock_config, "tool1", {}),
+            manager.invoke_tool("test", mock_config, "tool2", {}),
+            manager.invoke_tool("test", mock_config, "tool3", {}),
+        )
+
+        assert results == ["result", "result", "result"]
+        # Only one connection handler created
+        assert len(manager._connections) == 1
 
 
 class TestExceptions:
@@ -373,145 +521,67 @@ class TestExceptions:
         assert not issubclass(MCPTimeoutError, MCPConnectionError)
 
 
-class TestConcurrentConnections:
-    """Tests for concurrent connection handling."""
-
-    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
-    @pytest.mark.asyncio
-    async def test_concurrent_get_connections(self, mock_conn_cls, mock_config):
-        """Test multiple concurrent get_connection calls."""
-        manager = ConnectionManager()
-        mock_conn_instance = AsyncMock()
-        mock_conn_instance.connect.return_value = AsyncMock(spec=ClientSession)
-        mock_conn_cls.return_value = mock_conn_instance
-
-        # Simulate concurrent requests for same server
-        results = await asyncio.gather(
-            manager.get_connection("s1", mock_config),
-            manager.get_connection("s1", mock_config),
-            manager.get_connection("s1", mock_config),
-        )
-
-        # Should only create one connection
-        assert mock_conn_cls.call_count == 1
-        assert all(r is not None for r in results)
-
-    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
-    @pytest.mark.asyncio
-    async def test_concurrent_different_servers(self, mock_conn_cls, mock_config):
-        """Test concurrent connections to different servers."""
-        manager = ConnectionManager()
-        mock_conn_instance = AsyncMock()
-        mock_conn_instance.connect.return_value = AsyncMock(spec=ClientSession)
-        mock_conn_cls.return_value = mock_conn_instance
-
-        # Concurrent requests for different servers
-        await asyncio.gather(
-            manager.get_connection("s1", mock_config),
-            manager.get_connection("s2", mock_config),
-            manager.get_connection("s3", mock_config),
-        )
-
-        # Should create 3 separate connections
-        assert mock_conn_cls.call_count == 3
-
-    @patch("nexus_dev.gateway.connection_manager.MCPConnection")
-    @pytest.mark.asyncio
-    async def test_concurrent_invoke_tool_same_server(self, mock_conn_cls, mock_config):
-        """Test concurrent tool invocations on same server."""
-        manager = ConnectionManager()
-        mock_conn_instance = AsyncMock()
-        mock_conn_instance.invoke_with_timeout.return_value = "result"
-        mock_conn_cls.return_value = mock_conn_instance
-
-        results = await asyncio.gather(
-            manager.invoke_tool("s1", mock_config, "tool1", {}),
-            manager.invoke_tool("s1", mock_config, "tool2", {}),
-        )
-
-        # Both should succeed
-        assert results == ["result", "result"]
-        # Only one connection created
-        assert mock_conn_cls.call_count == 1
-
-
-class TestConnectionEdgeCases:
-    """Tests for edge cases in connection handling."""
+class TestMCPConnectionTransports:
+    """Tests for different transport types."""
 
     @pytest.mark.asyncio
-    async def test_disconnect_clears_session(self, mock_config):
-        """Test that disconnect properly clears session."""
-        conn = MCPConnection(name="test", config=mock_config)
-        mock_session = AsyncMock(spec=ClientSession)
-        conn.session = mock_session
-        conn._cleanup_stack = []
+    async def test_unsupported_transport_raises_error(self, mock_config):
+        """Test ValueError for unsupported transport."""
+        mock_config.transport = "unsupported"  # type: ignore
+        conn = MCPConnection(name="test", config=mock_config, max_retries=1)
 
-        await conn.disconnect()
+        with pytest.raises(MCPConnectionError) as exc_info:
+            await conn.invoke_with_timeout("tool", {})
 
-        assert conn.session is None
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "Unsupported transport" in str(exc_info.value.__cause__)
+
+    @pytest.mark.asyncio
+    async def test_sse_missing_url_raises_error(self, mock_sse_config):
+        """Test ValueError when URL missing for SSE."""
+        mock_sse_config.url = None
+        conn = MCPConnection(name="test", config=mock_sse_config, max_retries=1)
+
+        with pytest.raises(MCPConnectionError) as exc_info:
+            await conn.invoke_with_timeout("tool", {})
+
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "URL required for SSE transport" in str(exc_info.value.__cause__)
+
+    @pytest.mark.asyncio
+    async def test_http_missing_url_raises_error(self, mock_http_config):
+        """Test ValueError when URL missing for HTTP."""
+        mock_http_config.url = None
+        conn = MCPConnection(name="test", config=mock_http_config, max_retries=1)
+
+        with pytest.raises(MCPConnectionError) as exc_info:
+            await conn.invoke_with_timeout("tool", {})
+
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "URL required for HTTP transport" in str(exc_info.value.__cause__)
+
+
+class TestMCPConnectionLogging:
+    """Tests for logging output."""
 
     @patch("nexus_dev.gateway.connection_manager.stdio_client")
-    @pytest.mark.asyncio
-    async def test_connect_while_cleanup_in_progress(self, mock_stdio, mock_config):
-        """Test connect behavior when previous session was stale."""
-        conn = MCPConnection(name="test", config=mock_config, max_retries=1, retry_delay=0.01)
-
-        # Simulate stale session that fails ping
-        old_session = AsyncMock(spec=ClientSession)
-        old_session.send_ping = AsyncMock(side_effect=Exception("Stale"))
-        conn.session = old_session
-
-        # Mock transport context manager to fail (no real server)
-        mock_transport_cm = AsyncMock()
-        mock_transport_cm.__aenter__.side_effect = Exception("No server")
-        mock_stdio.return_value = mock_transport_cm
-
-        with pytest.raises(MCPConnectionError):
-            await conn.connect()
-
-        # Old session should be cleared
-        assert conn.session is None
-
-
-class TestMCPConnectionTransport:
-    """Tests for transport selection."""
-
-    @patch("nexus_dev.gateway.connection_manager.sse_client")
     @patch("nexus_dev.gateway.connection_manager.ClientSession")
     @pytest.mark.asyncio
-    async def test_connect_sse_transport(self, mock_session_cls, mock_sse, mock_config):
-        """Test connection using SSE transport."""
-        # Configure for SSE
-        mock_config.transport = "sse"
-        mock_config.url = "http://localhost:8000/sse"
-        mock_config.headers = {"Authorization": "Bearer test"}
+    async def test_logs_invocation_info(self, mock_session_cls, mock_stdio, mock_config, caplog):
+        """Test info logs during invocation."""
+        mock_session = AsyncMock(spec=ClientSession)
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = AsyncMock(return_value="result")
 
-        mock_transport_cm = AsyncMock()
-        mock_sse.return_value = mock_transport_cm
-        mock_transport_cm.__aenter__.return_value = (MagicMock(), MagicMock())
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        mock_stdio.return_value.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+        mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
 
-        mock_session_cm = AsyncMock()
-        mock_session_cls.return_value = mock_session_cm
-        mock_session_cm.__aenter__.return_value = AsyncMock(spec=ClientSession)
+        conn = MCPConnection(name="test-server", config=mock_config)
 
-        conn = MCPConnection(name="test", config=mock_config)
-        await conn.connect()
+        with caplog.at_level(logging.INFO):
+            await conn.invoke_with_timeout("my_tool", {})
 
-        mock_sse.assert_called_once_with(
-            url="http://localhost:8000/sse", headers={"Authorization": "Bearer test"}
-        )
-
-    @pytest.mark.asyncio
-    async def test_connect_sse_missing_url(self, mock_config):
-        """Test ValueError when URL missing for SSE."""
-        mock_config.transport = "sse"
-        mock_config.url = None
-
-        conn = MCPConnection(name="test", config=mock_config, max_retries=1, retry_delay=0.01)
-
-        with pytest.raises(MCPConnectionError) as exc:
-            await conn.connect()
-
-        # The underlying error should be ValueError
-        assert isinstance(exc.value.__cause__, ValueError)
-        assert "URL required for SSE transport" in str(exc.value.__cause__)
+        assert "[test-server] Queuing invoke_tool: my_tool" in caplog.text
+        assert "[test-server] Tool invocation successful: my_tool" in caplog.text
