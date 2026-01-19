@@ -70,6 +70,11 @@
                         "description": "Connection timeout in seconds",
                         "default": 10,
                         "minimum": 1
+                    },
+                    "max_concurrent": {
+                        "type": "integer",
+                        "description": "Maximum concurrent invocations for this server (overrides gateway default)",
+                        "minimum": 1
                     }
                 },
                 "allOf": [
@@ -150,6 +155,12 @@
                     "description": "Maximum concurrent connections to backend servers",
                     "default": 5,
                     "minimum": 1
+                },
+                "shutdown_timeout": {
+                    "type": "number",
+                    "description": "Graceful shutdown timeout in seconds",
+                    "default": 5,
+                    "minimum": 0
                 }
             }
         },

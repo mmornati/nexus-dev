@@ -146,7 +146,14 @@ def _get_connection_manager() -> ConnectionManager:
     """
     global _connection_manager
     if _connection_manager is None:
-        _connection_manager = ConnectionManager()
+        mcp_config = _get_mcp_config()
+        if mcp_config is not None:
+            _connection_manager = ConnectionManager(
+                default_max_concurrent=mcp_config.gateway.max_concurrent_connections,
+                shutdown_timeout=mcp_config.gateway.shutdown_timeout,
+            )
+        else:
+            _connection_manager = ConnectionManager()
     return _connection_manager
 
 
@@ -626,8 +633,8 @@ async def get_tool_schema(server: str, tool: str) -> str:
     conn_manager = _get_connection_manager()
 
     try:
-        session = await conn_manager.get_connection(server, server_config)
-        tools_result = await session.list_tools()
+        connection = await conn_manager.get_connection(server, server_config)
+        tools_result = await connection.list_tools()
 
         for t in tools_result.tools:
             if t.name == tool:
