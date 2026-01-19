@@ -306,7 +306,7 @@ class OllamaEmbedder(EmbeddingProvider):
         processed_texts: list[str] = []
         text_chunk_mapping: list[list[int]] = []  # Maps original text index to chunk indices
 
-        for i, text in enumerate(texts):
+        for text in texts:
             chunks = self._split_text_by_tokens(text)
             chunk_indices = list(range(len(processed_texts), len(processed_texts) + len(chunks)))
             text_chunk_mapping.append(chunk_indices)

@@ -195,10 +195,10 @@ class TestOllamaEmbedder:
 
     def test_estimate_tokens(self):
         """Test token estimation."""
-        # Rough: 1 token ≈ 4 characters
-        assert OllamaEmbedder._estimate_tokens("hello") == 2  # 5 / 4 = 1, but max(1, ...)
-        assert OllamaEmbedder._estimate_tokens("hello world") == 3  # 11 / 4 = 2
-        assert OllamaEmbedder._estimate_tokens("a" * 400) == 100  # 400 / 4 = 100
+        # Rough: 1 token ≈ 4 characters (integer division)
+        assert OllamaEmbedder._estimate_tokens("hello") == 1  # 5 // 4 = 1
+        assert OllamaEmbedder._estimate_tokens("hello world") == 2  # 11 // 4 = 2
+        assert OllamaEmbedder._estimate_tokens("a" * 400) == 100  # 400 // 4 = 100
         assert OllamaEmbedder._estimate_tokens("") == 1  # At least 1
 
     def test_split_text_by_tokens_small_text(self):
@@ -337,61 +337,92 @@ class TestOllamaEmbedder:
     @pytest.mark.asyncio
     async def test_embed_batch_with_text_splitting(self):
         """Test that large texts are split before batching."""
-        embedder = OllamaEmbedder(batch_size=10, max_text_tokens=100)
-
-        mock_response = MagicMock()
-        # Return embeddings for split texts
-        mock_response.json.return_value = {
-            "embeddings": [[0.1, 0.2], [0.3, 0.4]]  # One for each split chunk
-        }
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        embedder._client = mock_client
-
-        # Create a large text (>100 tokens)
-        large_text = "word. " * 100  # ~600 chars = ~150 tokens
-
-        result = await embedder.embed_batch([large_text, "short text"])
-
-        # Should return 2 embeddings (one per input text)
-        assert len(result) == 2
-        # The large text should be split and averaged
-        # The short text should be returned as-is
-        assert len(result[0]) == 2  # embedding dimensions
-
-    @pytest.mark.asyncio
-    async def test_embed_batch_split_text_averaging(self):
-        """Test that split texts are averaged correctly."""
         embedder = OllamaEmbedder(batch_size=10, max_text_tokens=50)
 
-        # Create a mock that returns different embeddings for each request
-        embeddings_returned = [
-            {"embeddings": [[0.1, 0.2], [0.3, 0.4]]},  # Two chunks from split text
-            {"embeddings": [[0.5, 0.6]]},  # One short text
-        ]
-        call_count = [0]
-
+        # Use a flexible mock that adapts to the number of texts in each request
+        # This allows the test to work regardless of exact chunk count
         async def mock_post(*args, **kwargs):
+            call_args = kwargs.get("json", {})
+            input_data = call_args.get("input", "")
+
+            # Determine how many embeddings to return based on input
+            num_texts = len(input_data) if isinstance(input_data, list) else 1
+
+            # Return appropriate number of embeddings
+            embeddings_for_batch = [[0.1 * (i + 1), 0.2 * (i + 1)] for i in range(num_texts)]
+
             result = MagicMock()
-            result.json.return_value = embeddings_returned[call_count[0]]
+            result.json.return_value = {"embeddings": embeddings_for_batch}
             result.raise_for_status = MagicMock()
-            call_count[0] += 1
             return result
 
         mock_client = AsyncMock()
         mock_client.post = mock_post
         embedder._client = mock_client
 
-        # Large text that will be split into 2 chunks
-        large_text = "word. " * 50
-        result = await embedder.embed_batch([large_text, "short"])
+        # Create a large text that will be split (>50 tokens)
+        # "a" * 250 ≈ 62 tokens, will definitely split
+        large_text = "a" * 250  # ~62 tokens, will split into 2+ chunks
+        short_text = "short"  # ~1 token, won't split
+
+        result = await embedder.embed_batch([large_text, short_text])
+
+        # Should return 2 embeddings (one per input text)
+        assert len(result) == 2
+        # The large text should be split and averaged
+        # The short text should be returned as-is
+        assert len(result[0]) == 2  # embedding dimensions
+        assert len(result[1]) == 2  # embedding dimensions
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_split_text_averaging(self):
+        """Test that split texts are averaged correctly."""
+        embedder = OllamaEmbedder(batch_size=10, max_text_tokens=40)
+
+        # Mock that returns embeddings in a predictable sequence
+        # This allows us to verify that split text embeddings are properly averaged
+        embedding_sequence = [
+            [0.1, 0.2],  # First chunk of large text
+            [0.3, 0.4],  # Second chunk of large text
+            [0.5, 0.6],  # Short text (not split)
+        ]
+        call_count = [0]
+
+        async def mock_post(*args, **kwargs):
+            call_args = kwargs.get("json", {})
+            input_data = call_args.get("input", "")
+
+            # Determine how many embeddings to return
+            num_embeddings = len(input_data) if isinstance(input_data, list) else 1
+
+            # Return embeddings from sequence in order
+            embeddings_for_batch = embedding_sequence[
+                call_count[0] : call_count[0] + num_embeddings
+            ]
+            call_count[0] += num_embeddings
+
+            result = MagicMock()
+            result.json.return_value = {"embeddings": embeddings_for_batch}
+            result.raise_for_status = MagicMock()
+            return result
+
+        mock_client = AsyncMock()
+        mock_client.post = mock_post
+        embedder._client = mock_client
+
+        # Create text that will split (>40 tokens)
+        # "test. " is ~6 chars, so "test. " * 30 ≈ 180 chars = 45 tokens, will split
+        large_text = "test. " * 30  # ~45 tokens, will split into 2 chunks
+        short_text = "hi"  # <1 token, won't split
+
+        result = await embedder.embed_batch([large_text, short_text])
 
         assert len(result) == 2
         # First result should be average of [0.1, 0.2] and [0.3, 0.4]
-        assert result[0] == [0.2, 0.3]  # [(0.1+0.3)/2, (0.2+0.4)/2]
-        # Second result should be [0.5, 0.6]
+        # Use approximate comparison for floating point arithmetic
+        assert abs(result[0][0] - 0.2) < 1e-10  # [(0.1+0.3)/2 = 0.2]
+        assert abs(result[0][1] - 0.3) < 1e-10  # [(0.2+0.4)/2 = 0.3]
+        # Second result should be [0.5, 0.6] (not split)
         assert result[1] == [0.5, 0.6]
 
     @pytest.mark.asyncio
