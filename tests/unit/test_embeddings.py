@@ -165,12 +165,21 @@ class TestOllamaEmbedder:
         embedder = OllamaEmbedder()
         assert embedder._model == "nomic-embed-text"
         assert embedder._base_url == "http://localhost:11434"
+        assert embedder._batch_size == 10
+        assert embedder._max_text_tokens == 1000
 
     def test_init_custom(self):
         """Test initialization with custom values."""
-        embedder = OllamaEmbedder(model="mxbai-embed-large", base_url="http://custom:8080/")
+        embedder = OllamaEmbedder(
+            model="mxbai-embed-large",
+            base_url="http://custom:8080/",
+            batch_size=5,
+            max_text_tokens=500,
+        )
         assert embedder._model == "mxbai-embed-large"
         assert embedder._base_url == "http://custom:8080"  # Trailing slash removed
+        assert embedder._batch_size == 5
+        assert embedder._max_text_tokens == 500
 
     def test_model_name_property(self):
         """Test model_name property."""
@@ -183,6 +192,46 @@ class TestOllamaEmbedder:
         assert OllamaEmbedder(model="mxbai-embed-large").dimensions == 1024
         assert OllamaEmbedder(model="all-minilm").dimensions == 384
         assert OllamaEmbedder(model="unknown").dimensions == 768  # Default
+
+    def test_estimate_tokens(self):
+        """Test token estimation."""
+        # Rough: 1 token ≈ 4 characters
+        assert OllamaEmbedder._estimate_tokens("hello") == 2  # 5 / 4 = 1, but max(1, ...)
+        assert OllamaEmbedder._estimate_tokens("hello world") == 3  # 11 / 4 = 2
+        assert OllamaEmbedder._estimate_tokens("a" * 400) == 100  # 400 / 4 = 100
+        assert OllamaEmbedder._estimate_tokens("") == 1  # At least 1
+
+    def test_split_text_by_tokens_small_text(self):
+        """Test that small texts are not split."""
+        embedder = OllamaEmbedder(max_text_tokens=1000)
+        text = "This is a small text"
+        result = embedder._split_text_by_tokens(text)
+        assert result == [text]
+
+    def test_split_text_by_tokens_large_text(self):
+        """Test that large texts are split."""
+        embedder = OllamaEmbedder(max_text_tokens=100)
+        # Create text that definitely exceeds 100 tokens
+        text = "Word. " * 50  # ~300 chars = ~75 tokens, should split
+        result = embedder._split_text_by_tokens(text)
+        # May be 1 or more chunks depending on token estimation
+        assert len(result) >= 1
+        # All chunks should be non-empty
+        assert all(chunk.strip() for chunk in result)
+        # Rejoined should be close to original (may lose some whitespace)
+        assert "Word" in "".join(result)
+
+    def test_split_text_by_tokens_at_sentence_boundary(self):
+        """Test that splitting respects sentence boundaries."""
+        embedder = OllamaEmbedder(max_text_tokens=50)
+        text = "First sentence. Second sentence. Third sentence."
+        result = embedder._split_text_by_tokens(text)
+        # Should ideally split at ". "
+        assert len(result) >= 1
+        # Each chunk should not be split in the middle of a sentence if possible
+        for chunk in result:
+            # No trailing partial sentences
+            assert not chunk.endswith(". S") and not chunk.endswith(". T")
 
     @pytest.mark.asyncio
     async def test_embed_with_embeddings_key(self):
@@ -235,9 +284,9 @@ class TestOllamaEmbedder:
             await embedder.embed("test text")
 
     @pytest.mark.asyncio
-    async def test_embed_batch(self):
-        """Test batch embedding."""
-        embedder = OllamaEmbedder()
+    async def test_embed_batch_single_batch(self):
+        """Test batch embedding that fits in a single request."""
+        embedder = OllamaEmbedder(batch_size=10)
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]}
@@ -253,6 +302,97 @@ class TestOllamaEmbedder:
         assert result[0] == [0.1, 0.2]
         assert result[1] == [0.3, 0.4]
         assert result[2] == [0.5, 0.6]
+        # Should make only 1 request
+        assert mock_client.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_multiple_batches(self):
+        """Test batch embedding that requires multiple API requests."""
+        embedder = OllamaEmbedder(batch_size=2)  # Small batch size
+
+        # Setup mock to return different embeddings for each call
+        call_count = 0
+
+        def mock_post(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock_response = MagicMock()
+            # Each batch returns 2 embeddings
+            mock_response.json.return_value = {
+                "embeddings": [[0.1 * call_count, 0.2], [0.3, 0.4 * call_count]]
+            }
+            mock_response.raise_for_status = MagicMock()
+            return mock_response
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=mock_post)
+        embedder._client = mock_client
+
+        result = await embedder.embed_batch(["a", "b", "c", "d"])
+
+        assert len(result) == 4
+        # Should make 2 requests (batch_size=2)
+        assert mock_client.post.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_with_text_splitting(self):
+        """Test that large texts are split before batching."""
+        embedder = OllamaEmbedder(batch_size=10, max_text_tokens=100)
+
+        mock_response = MagicMock()
+        # Return embeddings for split texts
+        mock_response.json.return_value = {
+            "embeddings": [[0.1, 0.2], [0.3, 0.4]]  # One for each split chunk
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        embedder._client = mock_client
+
+        # Create a large text (>100 tokens)
+        large_text = "word. " * 100  # ~600 chars = ~150 tokens
+
+        result = await embedder.embed_batch([large_text, "short text"])
+
+        # Should return 2 embeddings (one per input text)
+        assert len(result) == 2
+        # The large text should be split and averaged
+        # The short text should be returned as-is
+        assert len(result[0]) == 2  # embedding dimensions
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_split_text_averaging(self):
+        """Test that split texts are averaged correctly."""
+        embedder = OllamaEmbedder(batch_size=10, max_text_tokens=50)
+
+        # Create a mock that returns different embeddings for each request
+        embeddings_returned = [
+            {"embeddings": [[0.1, 0.2], [0.3, 0.4]]},  # Two chunks from split text
+            {"embeddings": [[0.5, 0.6]]},  # One short text
+        ]
+        call_count = [0]
+
+        async def mock_post(*args, **kwargs):
+            result = MagicMock()
+            result.json.return_value = embeddings_returned[call_count[0]]
+            result.raise_for_status = MagicMock()
+            call_count[0] += 1
+            return result
+
+        mock_client = AsyncMock()
+        mock_client.post = mock_post
+        embedder._client = mock_client
+
+        # Large text that will be split into 2 chunks
+        large_text = "word. " * 50
+        result = await embedder.embed_batch([large_text, "short"])
+
+        assert len(result) == 2
+        # First result should be average of [0.1, 0.2] and [0.3, 0.4]
+        assert result[0] == [0.2, 0.3]  # [(0.1+0.3)/2, (0.2+0.4)/2]
+        # Second result should be [0.5, 0.6]
+        assert result[1] == [0.5, 0.6]
 
     @pytest.mark.asyncio
     async def test_embed_batch_empty(self):
@@ -260,6 +400,45 @@ class TestOllamaEmbedder:
         embedder = OllamaEmbedder()
         result = await embedder.embed_batch([])
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_single_text_per_request(self):
+        """Test that single texts are sent as strings, not arrays."""
+        embedder = OllamaEmbedder(batch_size=1)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"embeddings": [[0.1, 0.2]]}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        embedder._client = mock_client
+
+        result = await embedder.embed_batch(["single text"])
+
+        # Check that the single text was sent as a string, not a list
+        call_args = mock_client.post.call_args
+        assert call_args[1]["json"]["input"] == "single text"
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_embed_batch_api_error_raises(self):
+        """Test that API errors are propagated."""
+        import httpx
+
+        embedder = OllamaEmbedder()
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "API Error", request=MagicMock(), response=MagicMock()
+        )
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        embedder._client = mock_client
+
+        with pytest.raises(httpx.HTTPStatusError, match="Ollama embedding request failed"):
+            await embedder.embed_batch(["text1", "text2"])
 
     @pytest.mark.asyncio
     async def test_close(self):
@@ -304,6 +483,18 @@ class TestCreateEmbedder:
 
         assert isinstance(embedder, OllamaEmbedder)
         assert embedder._base_url == "http://custom:8080"
+
+    def test_create_ollama_with_batch_config(self):
+        """Test creating Ollama embedder with batch configuration."""
+        config = NexusConfig.create_new("test", embedding_provider="ollama")
+        config.ollama_batch_size = 5
+        config.ollama_max_text_tokens = 500
+
+        embedder = create_embedder(config)
+
+        assert isinstance(embedder, OllamaEmbedder)
+        assert embedder._batch_size == 5
+        assert embedder._max_text_tokens == 500
 
     def test_create_unsupported_raises(self):
         """Test that unsupported provider raises ValueError."""

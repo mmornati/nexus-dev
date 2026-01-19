@@ -20,6 +20,8 @@ class NexusConfig:
         embedding_provider: Embedding provider to use ("openai" or "ollama").
         embedding_model: Model name for embeddings.
         ollama_url: URL for local Ollama server.
+        ollama_batch_size: Number of texts to embed per Ollama API request (default: 10).
+        ollama_max_text_tokens: Maximum tokens per text before splitting (default: 1000).
         db_path: Path to LanceDB database directory.
         include_patterns: Glob patterns for files to index.
         exclude_patterns: Glob patterns for files to exclude.
@@ -31,6 +33,8 @@ class NexusConfig:
     embedding_provider: Literal["openai", "ollama", "google", "aws", "voyage", "cohere"] = "openai"
     embedding_model: str = "text-embedding-3-small"
     ollama_url: str = "http://localhost:11434"
+    ollama_batch_size: int = 10
+    ollama_max_text_tokens: int = 1000
     # Google Vertex AI configuration
     google_project_id: str | None = None
     google_location: str | None = None
@@ -87,7 +91,7 @@ class NexusConfig:
                 "text-embedding-3-small" if embedding_provider == "openai" else "nomic-embed-text"
             )
 
-        # Set default models for other providers if not specified
+        # Set default models for other providers if not specified (second fallback)
         if embedding_model is None:
             defaults = {
                 "google": "text-embedding-004",
@@ -95,7 +99,7 @@ class NexusConfig:
                 "voyage": "voyage-large-2",
                 "cohere": "embed-multilingual-v3.0",
             }
-            embedding_model = defaults.get(embedding_provider, embedding_model)
+            embedding_model = defaults.get(embedding_provider, "nomic-embed-text")
 
         return cls(
             project_id=str(uuid.uuid4()),
@@ -137,6 +141,8 @@ class NexusConfig:
             embedding_provider=data.get("embedding_provider", "openai"),
             embedding_model=data.get("embedding_model", "text-embedding-3-small"),
             ollama_url=data.get("ollama_url", "http://localhost:11434"),
+            ollama_batch_size=data.get("ollama_batch_size", 10),
+            ollama_max_text_tokens=data.get("ollama_max_text_tokens", 1000),
             google_project_id=data.get("google_project_id"),
             google_location=data.get("google_location"),
             aws_region=data.get("aws_region"),
@@ -189,6 +195,8 @@ class NexusConfig:
             "embedding_provider": self.embedding_provider,
             "embedding_model": self.embedding_model,
             "ollama_url": self.ollama_url,
+            "ollama_batch_size": self.ollama_batch_size,
+            "ollama_max_text_tokens": self.ollama_max_text_tokens,
             "google_project_id": self.google_project_id,
             "google_location": self.google_location,
             "aws_region": self.aws_region,

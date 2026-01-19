@@ -168,7 +168,12 @@ class OpenAIEmbedder(EmbeddingProvider):
 
 
 class OllamaEmbedder(EmbeddingProvider):
-    """Local Ollama embedding provider."""
+    """Local Ollama embedding provider with smart batching and text chunking.
+
+    Handles large documents by:
+    1. Splitting texts that exceed token limits
+    2. Batching requests to avoid memory issues
+    """
 
     DIMENSIONS_MAP = {
         "nomic-embed-text": 768,
@@ -181,15 +186,21 @@ class OllamaEmbedder(EmbeddingProvider):
         self,
         model: str = "nomic-embed-text",
         base_url: str = "http://localhost:11434",
+        batch_size: int = 10,
+        max_text_tokens: int = 1000,
     ) -> None:
         """Initialize Ollama embedder.
 
         Args:
             model: Ollama embedding model name.
             base_url: Ollama server URL.
+            batch_size: Number of texts per API request (default: 10).
+            max_text_tokens: Maximum tokens per text before splitting (default: 1000).
         """
         self._model = model
         self._base_url = base_url.rstrip("/")
+        self._batch_size = batch_size
+        self._max_text_tokens = max_text_tokens
         self._client: httpx.AsyncClient | None = None
 
     @property
@@ -199,6 +210,65 @@ class OllamaEmbedder(EmbeddingProvider):
     @property
     def dimensions(self) -> int:
         return self.DIMENSIONS_MAP.get(self._model, 768)
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """Estimate token count for text.
+
+        Uses rough approximation: ~4 characters = 1 token for English.
+        This is conservative to avoid overshooting actual token limits.
+
+        Args:
+            text: Text to estimate tokens for.
+
+        Returns:
+            Approximate token count.
+        """
+        # Rough estimation: 1 token ≈ 4 characters for English
+        # This is conservative; actual tokenization may be more efficient
+        return max(1, len(text) // 4)
+
+    def _split_text_by_tokens(self, text: str) -> list[str]:
+        """Split text if it exceeds token limit.
+
+        Args:
+            text: Text to split if needed.
+
+        Returns:
+            List of text chunks, each under token limit.
+        """
+        estimated_tokens = self._estimate_tokens(text)
+
+        # If text is under limit, return as-is
+        if estimated_tokens <= self._max_text_tokens:
+            return [text]
+
+        # Calculate approximate characters per chunk
+        chars_per_chunk = (len(text) // estimated_tokens) * self._max_text_tokens
+        chunks = []
+        start = 0
+
+        while start < len(text):
+            end = min(start + chars_per_chunk, len(text))
+
+            # Try to break at a sentence boundary (period + space)
+            if end < len(text):
+                # Look backwards for a good break point
+                sentence_break = text.rfind(". ", start, end)
+                if sentence_break > start:
+                    end = sentence_break + 2
+                else:
+                    # Try line break as fallback
+                    newline_break = text.rfind("\n", start, end)
+                    if newline_break > start:
+                        end = newline_break + 1
+
+            chunk = text[start:end].strip()
+            if chunk:  # Only add non-empty chunks
+                chunks.append(chunk)
+            start = end
+
+        return chunks if chunks else [text]  # Fallback to original if splitting failed
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create async HTTP client."""
@@ -211,58 +281,104 @@ class OllamaEmbedder(EmbeddingProvider):
 
     async def embed(self, text: str) -> list[float]:
         """Generate embedding for a single text using Ollama API."""
-        client = await self._get_client()
-
-        response = await client.post(
-            "/api/embed",
-            json={
-                "model": self._model,
-                "input": text,
-            },
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        # Ollama returns embeddings in different formats depending on version
-        if "embeddings" in data:
-            return data["embeddings"][0]
-        elif "embedding" in data:
-            return data["embedding"]
-        else:
-            raise ValueError(f"Unexpected Ollama response format: {data.keys()}")
+        result = await self.embed_batch([text])
+        return result[0]
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple texts using Ollama API.
 
-        Note: Ollama processes requests sequentially, so this is slower than OpenAI.
+        Handles large batches by:
+        1. Pre-splitting texts that exceed token limits
+        2. Batching requests to avoid memory issues
 
         Args:
             texts: List of texts to embed.
 
         Returns:
-            List of embedding vectors.
+            List of embedding vectors (in same order as input texts).
         """
         if not texts:
             return []
 
         client = await self._get_client()
 
-        # Ollama supports batch embedding in newer versions
-        response = await client.post(
-            "/api/embed",
-            json={
-                "model": self._model,
-                "input": texts,
-            },
-        )
-        response.raise_for_status()
+        # Pre-process: split any texts that exceed token limits
+        processed_texts: list[str] = []
+        text_chunk_mapping: list[list[int]] = []  # Maps original text index to chunk indices
 
-        data = response.json()
-        if "embeddings" in data:
-            return data["embeddings"]
+        for i, text in enumerate(texts):
+            chunks = self._split_text_by_tokens(text)
+            chunk_indices = list(range(len(processed_texts), len(processed_texts) + len(chunks)))
+            text_chunk_mapping.append(chunk_indices)
+            processed_texts.extend(chunks)
 
-        # Fallback: process one by one for older Ollama versions
-        return [await self.embed(text) for text in texts]
+        # Process texts in batches to avoid memory issues
+        all_embeddings: list[list[float]] = []
+
+        for batch_start in range(0, len(processed_texts), self._batch_size):
+            batch_end = min(batch_start + self._batch_size, len(processed_texts))
+            batch = processed_texts[batch_start:batch_end]
+
+            # For single text, use the simple endpoint
+            if len(batch) == 1:
+                response = await client.post(
+                    "/api/embed",
+                    json={
+                        "model": self._model,
+                        "input": batch[0],
+                    },
+                )
+            else:
+                # For multiple texts, use array input
+                response = await client.post(
+                    "/api/embed",
+                    json={
+                        "model": self._model,
+                        "input": batch,
+                    },
+                )
+
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                raise httpx.HTTPStatusError(
+                    f"Ollama embedding request failed for batch of {len(batch)} texts: {e}",
+                    request=e.request,
+                    response=e.response,
+                ) from e
+
+            data = response.json()
+
+            # Extract embeddings based on response format
+            if "embeddings" in data:
+                batch_embeddings = data["embeddings"]
+            elif "embedding" in data:
+                # Single embedding response
+                batch_embeddings = [data["embedding"]]
+            else:
+                raise ValueError(f"Unexpected Ollama response format: {data.keys()}")
+
+            all_embeddings.extend(batch_embeddings)
+
+        # Map chunk embeddings back to original texts
+        # For texts that were split, average their chunk embeddings
+        result_embeddings: list[list[float]] = []
+        embedding_dim = len(all_embeddings[0]) if all_embeddings else 0
+
+        for chunk_indices in text_chunk_mapping:
+            if len(chunk_indices) == 1:
+                # Single chunk, use its embedding directly
+                result_embeddings.append(all_embeddings[chunk_indices[0]])
+            else:
+                # Multiple chunks, average their embeddings
+                chunk_embeddings = [all_embeddings[i] for i in chunk_indices]
+                avg_embedding = [
+                    sum(emb[j] for emb in chunk_embeddings) / len(chunk_embeddings)
+                    for j in range(embedding_dim)
+                ]
+                result_embeddings.append(avg_embedding)
+
+        return result_embeddings
 
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -550,6 +666,8 @@ def create_embedder(config: NexusConfig) -> EmbeddingProvider:
         return OllamaEmbedder(
             model=config.embedding_model,
             base_url=config.ollama_url,
+            batch_size=config.ollama_batch_size,
+            max_text_tokens=config.ollama_max_text_tokens,
         )
     elif config.embedding_provider == "google":
         return VertexAIEmbedder(
