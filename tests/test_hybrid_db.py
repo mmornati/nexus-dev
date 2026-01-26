@@ -1,6 +1,5 @@
 """Tests for hybrid database module."""
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -18,7 +17,7 @@ def test_hybrid_database_disabled_by_default(tmp_path: Path) -> None:
 
     # Should not connect when disabled
     db.connect()
-    assert db._kv is None
+    assert db._kv_store is None
     assert db._graph_conn is None
 
 
@@ -48,18 +47,21 @@ def test_hybrid_database_initialization(tmp_path: Path) -> None:
 
     try:
         # KV store should be initialized
-        assert db._kv is not None
-        assert isinstance(db._kv, sqlite3.Connection)
+        assert db._kv_store is not None
+        from nexus_dev.kv_store import KVStore
+
+        assert isinstance(db._kv_store, KVStore)
 
         # Graph store should be initialized
         assert db._graph_db is not None
         assert db._graph_conn is not None
 
-        # KV schema should be created
-        cursor = db._kv.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
-        )
-        assert cursor.fetchone() is not None
+        # KV schema should be created - verify through KVStore
+        # Try to create a session to verify tables exist
+        db._kv_store.create_session("test-session", "test-project")
+        session = db._kv_store.get_session("test-session")
+        assert session is not None
+        assert session["session_id"] == "test-session"
 
     finally:
         db.close()
@@ -76,7 +78,9 @@ def test_kv_property_lazy_initialization(tmp_path: Path) -> None:
     # Should initialize on property access
     kv = db.kv
     assert kv is not None
-    assert isinstance(kv, sqlite3.Connection)
+    from nexus_dev.kv_store import KVStore
+
+    assert isinstance(kv, KVStore)
 
     db.close()
 
@@ -104,7 +108,7 @@ def test_context_manager(tmp_path: Path) -> None:
 
     with HybridDatabase(config) as db:
         # Should be connected
-        assert db._kv is not None
+        assert db._kv_store is not None
         kv = db.kv
         assert kv is not None
 

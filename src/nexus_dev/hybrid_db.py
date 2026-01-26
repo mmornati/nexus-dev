@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -10,6 +9,8 @@ if TYPE_CHECKING:
 
     from .config import NexusConfig
     from .database import NexusDatabase
+
+from .kv_store import KVStore
 
 
 class HybridDatabase:
@@ -31,7 +32,7 @@ class HybridDatabase:
             config: Nexus-Dev configuration
         """
         self.config = config
-        self._kv: sqlite3.Connection | None = None
+        self._kv_store: KVStore | None = None
         self._vector: NexusDatabase | None = None
         self._graph_db: kuzu.Database | None = None
         self._graph_conn: kuzu.Connection | None = None
@@ -49,10 +50,8 @@ class HybridDatabase:
 
         # KV Store (SQLite)
         kv_path = db_path / "state.db"
-        kv_path.parent.mkdir(parents=True, exist_ok=True)
-        self._kv = sqlite3.connect(str(kv_path))
-        self._kv.row_factory = sqlite3.Row
-        self._init_kv_schema()
+        self._kv_store = KVStore(kv_path)
+        self._kv_store.connect()
 
         # Graph Store (KùzuDB)
         # KùzuDB creates the directory automatically - don't mkdir first
@@ -65,25 +64,6 @@ class HybridDatabase:
         self._graph_conn = kuzu.Connection(self._graph_db)
         self._init_graph_schema()
 
-    def _init_kv_schema(self) -> None:
-        """Create KV store tables if not exist.
-
-        Note: Full schema implementation will be added in Phase 1 (#57).
-        For now, just creates the basic structure.
-        """
-        if self._kv is None:
-            return
-
-        # Placeholder - will be implemented in #57
-        self._kv.executescript("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                session_id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        self._kv.commit()
-
     def _init_graph_schema(self) -> None:
         """Create graph schema if not exist.
 
@@ -94,11 +74,11 @@ class HybridDatabase:
         pass
 
     @property
-    def kv(self) -> sqlite3.Connection:
-        """Get KV store connection.
+    def kv(self) -> KVStore:
+        """Get KV store.
 
         Returns:
-            SQLite connection
+            KVStore instance
 
         Raises:
             RuntimeError: If hybrid mode is not enabled
@@ -108,13 +88,13 @@ class HybridDatabase:
                 "Hybrid database is not enabled. Set enable_hybrid_db=True in config."
             )
 
-        if self._kv is None:
+        if self._kv_store is None:
             self.connect()
 
-        if self._kv is None:
+        if self._kv_store is None:
             raise RuntimeError("Failed to initialize KV store")
 
-        return self._kv
+        return self._kv_store
 
     @property
     def graph(self) -> Any:  # kuzu.Connection
@@ -141,9 +121,9 @@ class HybridDatabase:
 
     def close(self) -> None:
         """Close all database connections."""
-        if self._kv:
-            self._kv.close()
-            self._kv = None
+        if self._kv_store:
+            self._kv_store.close()
+            self._kv_store = None
 
         if self._graph_conn:
             self._graph_conn = None
