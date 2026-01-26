@@ -26,6 +26,7 @@ from .database import Document, DocumentType, NexusDatabase, generate_document_i
 from .embeddings import EmbeddingProvider, create_embedder
 from .gateway.connection_manager import ConnectionManager
 from .github_importer import GitHubImporter
+from .hybrid_db import HybridDatabase
 from .mcp_config import MCPConfig
 
 # Initialize FastMCP server
@@ -38,6 +39,7 @@ _config: NexusConfig | None = None
 _embedder: EmbeddingProvider | None = None
 _database: NexusDatabase | None = None
 _mcp_config: MCPConfig | None = None
+_hybrid_db: HybridDatabase | None = None
 _connection_manager: ConnectionManager | None = None
 _agent_manager: AgentManager | None = None
 _project_root: Path | None = None
@@ -181,6 +183,19 @@ def _get_database() -> NexusDatabase:
         _database = NexusDatabase(config, embedder)
         _database.connect()
     return _database
+
+
+def _get_hybrid_db() -> HybridDatabase:
+    """Get or create hybrid database connection."""
+    global _hybrid_db
+    if _hybrid_db is None:
+        config = _get_config()
+        if config is None:
+            # Create minimal config
+            config = NexusConfig.create_new("default")
+        _hybrid_db = HybridDatabase(config)
+        # We don't verify connection here as it's opt-in via config
+    return _hybrid_db
 
 
 async def _index_chunks(
@@ -559,6 +574,56 @@ async def search_tools(
         output_parts.append("")
 
     return "\n".join(output_parts)
+
+
+@mcp.tool()
+async def get_recent_context(
+    session_id: str,
+    limit: int = 20,
+) -> str:
+    """Get recent chat messages from the session history.
+
+    Use this tool to recall previous interactions, user requests, or decisions
+    made earlier in the current session. This uses the high-speed KV store.
+
+    Args:
+        session_id: The session ID to retrieve history for.
+        limit: Maximum number of messages to return (default: 20).
+
+    Returns:
+        Formatted chat history or a status message if no history found.
+    """
+    hybrid_db = _get_hybrid_db()
+
+    # Check if hybrid DB is enabled
+    if not hybrid_db.config.enable_hybrid_db:
+        return "Hybrid database is not enabled in configuration."
+
+    try:
+        # Connect if needed
+        hybrid_db.connect()
+
+        # Get messages from KV store
+        messages = hybrid_db.kv.get_recent_messages(session_id, limit=limit)
+
+        if not messages:
+            return f"No chat history found for session: {session_id}"
+
+        output = [f"## Recent Context (Session: {session_id})", ""]
+
+        for msg in messages:
+            role = msg["role"].upper()
+            ts = msg.get("timestamp", "unknown time")
+            content = msg["content"]
+
+            output.append(f"### {role} ({ts})")
+            output.append(content)
+            output.append("")
+
+        return "\n".join(output)
+
+    except Exception as e:
+        return f"Error retrieving context: {e!s}"
 
 
 @mcp.tool()
@@ -1703,6 +1768,7 @@ async def refresh_agents(ctx: Context[Any, Any]) -> str:
     _config = None
     _mcp_config = None
     _database = None
+    _hybrid_db = None
 
     database = _get_database()
     if database is None:
