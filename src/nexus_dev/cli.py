@@ -26,10 +26,30 @@ import yaml
 from .chunkers import ChunkerRegistry
 from .config import NexusConfig
 from .database import Document, DocumentType, NexusDatabase, generate_document_id
-from .embeddings import create_embedder
+from .embeddings import create_embedder, validate_embedding_config
 from .github_importer import GitHubImporter
 from .mcp_client import MCPClientManager, MCPServerConnection
 from .mcp_config import MCPConfig, MCPServerConfig
+
+
+def _validate_embeddings_or_exit(config: NexusConfig) -> bool:
+    """Validate embedding config, print error and return False if invalid.
+
+    Args:
+        config: Nexus-Dev configuration.
+
+    Returns:
+        True if valid, False if invalid (error message already printed).
+    """
+    is_valid, error_msg = validate_embedding_config(config)
+    if not is_valid:
+        click.echo(f"❌ Embedding configuration error: {error_msg}", err=True)
+        click.echo(
+            "   Configure embedding provider or set required environment variable.",
+            err=True,
+        )
+        return False
+    return True
 
 
 def _find_project_root(start_path: Path | None = None) -> Path | None:
@@ -424,6 +444,11 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
         return
 
     config = NexusConfig.load(config_path)
+
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
+
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -772,6 +797,11 @@ def index_lesson_command(lesson_file: str, quiet: bool) -> None:
         return
 
     config = NexusConfig.load(config_path)
+
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
+
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -852,6 +882,10 @@ def export_command(project_id: str | None, output: Path | None) -> None:
             config = NexusConfig.create_new("temp")
 
         try:
+            # Validate embedding configuration before proceeding
+            if not _validate_embeddings_or_exit(config):
+                return
+
             embedder = create_embedder(config)
             db = NexusDatabase(config, embedder)
             db.connect()
@@ -931,6 +965,10 @@ def status_command(verbose: bool) -> None:
     click.echo("")
 
     try:
+        # Validate embedding configuration before proceeding
+        if not _validate_embeddings_or_exit(config):
+            return
+
         embedder = create_embedder(config)
         database = NexusDatabase(config, embedder)
         database.connect()
@@ -982,11 +1020,19 @@ def inspect_command(project_id: str | None, limit: int, all_projects: bool) -> N
 
     # Get database path from config or use default
     if config:
+        # Validate embedding configuration before proceeding
+        if not _validate_embeddings_or_exit(config):
+            return
+
         embedder = create_embedder(config)
         database = NexusDatabase(config, embedder)
     else:
         # Use default config to access shared database
         default_config = NexusConfig.create_new("temp")
+        # Validate embedding configuration before proceeding
+        if not _validate_embeddings_or_exit(default_config):
+            return
+
         embedder = create_embedder(default_config)
         database = NexusDatabase(default_config, embedder)
 
@@ -1092,6 +1138,10 @@ def clean_command(project_id: str | None, clean_all: bool, dry_run: bool) -> Non
         config = NexusConfig.load(config_path)
     else:
         config = NexusConfig.create_new("temp")
+
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
 
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
@@ -1201,6 +1251,10 @@ def reindex_command() -> None:
         return
 
     # Proceed with DB operations
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
+
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1256,6 +1310,11 @@ def import_github_command(repo: str, owner: str, limit: int, state: str) -> None
         return
 
     config = NexusConfig.load(config_path)
+
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
+
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1301,6 +1360,11 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
         return
 
     config = NexusConfig.load(config_path)
+
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
+
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1415,6 +1479,11 @@ async def _index_mcp_servers(
 
     config = NexusConfig.load(config_path)
     client = MCPClientManager()
+
+    # Validate embedding configuration before proceeding
+    if not _validate_embeddings_or_exit(config):
+        return
+
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()

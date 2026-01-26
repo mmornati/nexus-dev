@@ -10,6 +10,7 @@ from nexus_dev.embeddings import (
     OllamaEmbedder,
     OpenAIEmbedder,
     create_embedder,
+    validate_embedding_config,
 )
 
 
@@ -544,3 +545,99 @@ class TestCreateEmbedder:
 
         assert embedder.model_name == "mxbai-embed-large"
         assert embedder.dimensions == 1024
+
+
+class TestValidateEmbeddingConfig:
+    """Test suite for validate_embedding_config function."""
+
+    def test_openai_without_key_invalid(self):
+        """OpenAI config without API key should be invalid."""
+        config = NexusConfig.create_new("test", embedding_provider="openai")
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("OPENAI_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert not is_valid
+            assert "OPENAI_API_KEY" in error
+
+    def test_openai_with_key_valid(self):
+        """OpenAI config with API key should be valid."""
+        config = NexusConfig.create_new("test", embedding_provider="openai")
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
+
+    def test_ollama_always_valid(self):
+        """Ollama config should always be valid (no key required)."""
+        config = NexusConfig.create_new("test", embedding_provider="ollama")
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("OPENAI_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
+
+    def test_voyage_without_key_invalid(self):
+        """Voyage config without API key should be invalid."""
+        config = NexusConfig.create_new("test", embedding_provider="voyage")
+        config.voyage_api_key = None
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("VOYAGE_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert not is_valid
+            assert "VOYAGE_API_KEY" in error or "voyage" in error.lower()
+
+    def test_voyage_with_env_key_valid(self):
+        """Voyage config with env API key should be valid."""
+        config = NexusConfig.create_new("test", embedding_provider="voyage")
+        config.voyage_api_key = None
+        with patch.dict(os.environ, {"VOYAGE_API_KEY": "test-key"}):
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
+
+    def test_voyage_with_config_key_valid(self):
+        """Voyage config with config API key should be valid."""
+        config = NexusConfig.create_new("test", embedding_provider="voyage")
+        config.voyage_api_key = "test-key"
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("VOYAGE_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
+
+    def test_cohere_without_key_invalid(self):
+        """Cohere config without API key should be invalid."""
+        config = NexusConfig.create_new("test", embedding_provider="cohere")
+        config.cohere_api_key = None
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("CO_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert not is_valid
+            assert "CO_API_KEY" in error or "cohere" in error.lower()
+
+    def test_cohere_with_env_key_valid(self):
+        """Cohere config with env API key should be valid."""
+        config = NexusConfig.create_new("test", embedding_provider="cohere")
+        config.cohere_api_key = None
+        with patch.dict(os.environ, {"CO_API_KEY": "test-key"}):
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
+
+    def test_google_always_valid(self):
+        """Google/Vertex AI config should always be valid (uses SDK auth)."""
+        config = NexusConfig.create_new("test", embedding_provider="google")
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("OPENAI_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
+
+    def test_aws_always_valid(self):
+        """AWS Bedrock config should always be valid (uses SDK auth)."""
+        config = NexusConfig.create_new("test", embedding_provider="aws")
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("OPENAI_API_KEY", None)
+            is_valid, error = validate_embedding_config(config)
+            assert is_valid
+            assert error is None
