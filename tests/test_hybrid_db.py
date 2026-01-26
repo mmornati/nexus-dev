@@ -18,7 +18,7 @@ def test_hybrid_database_disabled_by_default(tmp_path: Path) -> None:
     # Should not connect when disabled
     db.connect()
     assert db._kv_store is None
-    assert db._graph_conn is None
+    assert db._graph_store is None
 
 
 def test_hybrid_database_requires_flag(tmp_path: Path) -> None:
@@ -53,8 +53,10 @@ def test_hybrid_database_initialization(tmp_path: Path) -> None:
         assert isinstance(db._kv_store, KVStore)
 
         # Graph store should be initialized
-        assert db._graph_db is not None
-        assert db._graph_conn is not None
+        assert db._graph_store is not None
+        from nexus_dev.graph_store import GraphStore
+
+        assert isinstance(db._graph_store, GraphStore)
 
         # KV schema should be created - verify through KVStore
         # Try to create a session to verify tables exist
