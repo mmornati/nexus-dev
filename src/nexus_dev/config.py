@@ -65,6 +65,7 @@ class NexusConfig:
     docs_folders: list[str] = field(
         default_factory=lambda: ["docs/", "documentation/", "README.md"]
     )
+    enable_hybrid_db: bool = False  # Feature flag for hybrid database (KV + Vector + Graph)
 
     @classmethod
     def create_new(
@@ -164,6 +165,7 @@ class NexusConfig:
                 ],
             ),
             docs_folders=data.get("docs_folders", ["docs/", "documentation/", "README.md"]),
+            enable_hybrid_db=data.get("enable_hybrid_db", False),
         )
 
     @classmethod
@@ -208,6 +210,7 @@ class NexusConfig:
             "include_patterns": self.include_patterns,
             "exclude_patterns": self.exclude_patterns,
             "docs_folders": self.docs_folders,
+            "enable_hybrid_db": self.enable_hybrid_db,
         }
 
         with open(path, "w", encoding="utf-8") as f:

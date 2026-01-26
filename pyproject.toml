@@ -30,6 +30,7 @@ dependencies = [
     "tree-sitter-language-pack>=0.7.0", # Pre-built parsers (100+ languages)
     "jsonschema>=4.18.0",               # JSON schema validation
     "pandas>=2.0.0",                    # DataFrame support for LanceDB
+    "kuzu>=0.7.0",                      # Graph database
 ]
 
 [project.optional-dependencies]
@@ -118,6 +119,8 @@ module = [
     "cohere.*",
     "boto3",
     "boto3.*",
+    "kuzu",
+    "kuzu.*",
 ]
 ignore_missing_imports = true
 
