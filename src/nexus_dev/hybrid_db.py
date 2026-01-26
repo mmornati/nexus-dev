@@ -5,11 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import kuzu
-
     from .config import NexusConfig
     from .database import NexusDatabase
 
+from .graph_store import GraphStore
 from .kv_store import KVStore
 
 
@@ -34,8 +33,7 @@ class HybridDatabase:
         self.config = config
         self._kv_store: KVStore | None = None
         self._vector: NexusDatabase | None = None
-        self._graph_db: kuzu.Database | None = None
-        self._graph_conn: kuzu.Connection | None = None
+        self._graph_store: GraphStore | None = None
 
     def connect(self) -> None:
         """Initialize all database connections.
@@ -56,22 +54,8 @@ class HybridDatabase:
         # Graph Store (KùzuDB)
         # KùzuDB creates the directory automatically - don't mkdir first
         graph_path = db_path / "graph_db"
-
-        # Lazy import kuzu to avoid dependency when hybrid mode is disabled
-        import kuzu
-
-        self._graph_db = kuzu.Database(str(graph_path))
-        self._graph_conn = kuzu.Connection(self._graph_db)
-        self._init_graph_schema()
-
-    def _init_graph_schema(self) -> None:
-        """Create graph schema if not exist.
-
-        Note: Full schema implementation will be added in Phase 2 (#59).
-        For now, just verifies connection works.
-        """
-        # Placeholder - will be implemented in #59
-        pass
+        self._graph_store = GraphStore(graph_path)
+        self._graph_store.connect()
 
     @property
     def kv(self) -> KVStore:
@@ -97,11 +81,11 @@ class HybridDatabase:
         return self._kv_store
 
     @property
-    def graph(self) -> Any:  # kuzu.Connection
-        """Get graph connection.
+    def graph(self) -> GraphStore:
+        """Get graph store.
 
         Returns:
-            KùzuDB connection
+            GraphStore instance
 
         Raises:
             RuntimeError: If hybrid mode is not enabled
@@ -111,13 +95,13 @@ class HybridDatabase:
                 "Hybrid database is not enabled. Set enable_hybrid_db=True in config."
             )
 
-        if self._graph_conn is None:
+        if self._graph_store is None:
             self.connect()
 
-        if self._graph_conn is None:
+        if self._graph_store is None:
             raise RuntimeError("Failed to initialize graph store")
 
-        return self._graph_conn
+        return self._graph_store
 
     def close(self) -> None:
         """Close all database connections."""
@@ -125,11 +109,9 @@ class HybridDatabase:
             self._kv_store.close()
             self._kv_store = None
 
-        if self._graph_conn:
-            self._graph_conn = None
-
-        if self._graph_db:
-            self._graph_db = None
+        if self._graph_store:
+            self._graph_store.close()
+            self._graph_store = None
 
     def __enter__(self) -> HybridDatabase:
         """Context manager entry."""
