@@ -648,6 +648,48 @@ class CohereEmbedder(EmbeddingProvider):
         return response.embeddings.float
 
 
+def validate_embedding_config(config: NexusConfig) -> tuple[bool, str | None]:
+    """Validate embedding configuration before creating embedder.
+
+    Checks if the required credentials and configuration are present for the
+    selected embedding provider. This allows CLI commands to fail early with
+    helpful error messages instead of crashing during embedder initialization.
+
+    Args:
+        config: Nexus-Dev configuration.
+
+    Returns:
+        Tuple of (is_valid, error_message). error_message is None if valid.
+    """
+    if config.embedding_provider == "openai":
+        if not os.environ.get("OPENAI_API_KEY"):
+            return False, (
+                "OpenAI embedding requires OPENAI_API_KEY environment variable. "
+                "Set it with: export OPENAI_API_KEY=your-key"
+            )
+    elif (
+        config.embedding_provider == "voyage"
+        and not config.voyage_api_key
+        and not os.environ.get("VOYAGE_API_KEY")
+    ):
+        return False, (
+            "Voyage AI embedding requires voyage_api_key in config "
+            "or VOYAGE_API_KEY environment variable"
+        )
+    elif (
+        config.embedding_provider == "cohere"
+        and not config.cohere_api_key
+        and not os.environ.get("CO_API_KEY")
+    ):
+        return False, (
+            "Cohere embedding requires cohere_api_key in config or CO_API_KEY environment variable"
+        )
+    # ollama: No API key required (local server)
+    # google: Uses gcloud default credentials (SDK handles it)
+    # aws: Uses boto3 default credentials (SDK handles it)
+    return True, None
+
+
 def create_embedder(config: NexusConfig) -> EmbeddingProvider:
     """Create an embedding provider based on configuration.
 
