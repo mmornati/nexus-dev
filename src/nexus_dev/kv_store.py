@@ -1,83 +1,46 @@
-"""SQLite-based key-value store for fast exact lookups."""
+"""Redis-based key-value store (FalkorDBLite) for fast exact lookups."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 
 class KVStore:
-    """SQLite-based key-value store for session state.
+    """Redis-based key-value store for session state.
 
     Provides fast exact lookups for:
-    - Session metadata and state
-    - Chat history (message-by-message recall)
-    - Configuration cache with TTL support
+    - Session metadata and state (Hash)
+    - Chat history (List of JSON)
+    - Configuration cache (String with TTL)
 
     Attributes:
-        db_path: Path to SQLite database file
+        client: Redis client instance
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, client: Redis) -> None:
         """Initialize KV store.
 
         Args:
-            db_path: Path to SQLite database file
+            client: Configured Redis client
         """
-        self.db_path = db_path
-        self._conn: sqlite3.Connection | None = None
+        self.client = client
 
     def connect(self) -> None:
-        """Connect and initialize schema.
+        """Verify connection.
 
-        Creates database file and tables if they don't exist.
+        Using external client, so we just ping.
         """
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path))
-        self._conn.row_factory = sqlite3.Row
-        self._init_schema()
-
-    def _init_schema(self) -> None:
-        """Create tables if not exist."""
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        self._conn.executescript("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                session_id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                metadata TEXT DEFAULT '{}'
-            );
-
-            CREATE TABLE IF NOT EXISTS chat_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
-                content TEXT NOT NULL,
-                timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_chat_session
-                ON chat_history(session_id);
-            CREATE INDEX IF NOT EXISTS idx_chat_timestamp
-                ON chat_history(timestamp DESC);
-
-            CREATE TABLE IF NOT EXISTS config_cache (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                expires_at TEXT
-            );
-        """)
-        self._conn.commit()
+        self.client.ping()
 
     # Session methods
+
+    def _session_key(self, session_id: str) -> str:
+        return f"session:{session_id}"
 
     def create_session(
         self, session_id: str, project_id: str, metadata: dict[str, Any] | None = None
@@ -89,18 +52,18 @@ class KVStore:
             project_id: Project this session belongs to
             metadata: Optional session metadata
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        key = self._session_key(session_id)
+        now = datetime.now(UTC).isoformat()
 
-        metadata_json = json.dumps(metadata or {})
-        self._conn.execute(
-            """INSERT OR REPLACE INTO sessions
-               (session_id, project_id, metadata, updated_at)
-               VALUES (?, ?, ?, CURRENT_TIMESTAMP)""",
-            (session_id, project_id, metadata_json),
-        )
-        self._conn.commit()
+        data = {
+            "session_id": session_id,
+            "project_id": project_id,
+            "created_at": now,
+            "updated_at": now,
+            "metadata": json.dumps(metadata or {}),
+        }
+
+        self.client.hset(key, mapping=data)
 
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         """Get session by ID.
@@ -111,23 +74,22 @@ class KVStore:
         Returns:
             Session data or None if not found
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        key = self._session_key(session_id)
+        data = self.client.hgetall(key)
 
-        row = self._conn.execute(
-            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-        ).fetchone()
-
-        if not row:
+        if not data:
             return None
 
+        # Decode bytes to strings if needed (redis-py usually handles decoding if configured,
+        # but let's be safe or assume decode_responses=True in client config)
+        # We will assume decode_responses=True for simplicity.
+
         return {
-            "session_id": row["session_id"],
-            "project_id": row["project_id"],
-            "created_at": row["created_at"],
-            "updated_at": row["updated_at"],
-            "metadata": json.loads(row["metadata"]),
+            "session_id": data["session_id"],
+            "project_id": data["project_id"],
+            "created_at": data["created_at"],
+            "updated_at": data["updated_at"],
+            "metadata": json.loads(data["metadata"]),
         }
 
     def update_session(self, session_id: str, metadata: dict[str, Any]) -> None:
@@ -137,18 +99,14 @@ class KVStore:
             session_id: Session identifier
             metadata: New metadata (replaces existing)
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        key = self._session_key(session_id)
+        if not self.client.exists(key):
+            # mimics sqlite behavior of not updating if not exists?
+            # SQLite UPDATE WHERE would do nothing.
+            return
 
-        metadata_json = json.dumps(metadata)
-        self._conn.execute(
-            """UPDATE sessions
-               SET metadata = ?, updated_at = CURRENT_TIMESTAMP
-               WHERE session_id = ?""",
-            (metadata_json, session_id),
-        )
-        self._conn.commit()
+        now = datetime.now(UTC).isoformat()
+        self.client.hset(key, mapping={"metadata": json.dumps(metadata), "updated_at": now})
 
     def delete_session(self, session_id: str) -> None:
         """Delete session and all associated chat history.
@@ -156,14 +114,11 @@ class KVStore:
         Args:
             session_id: Session identifier
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        # Delete session key
+        self.client.delete(self._session_key(session_id))
 
-        # Delete chat history first (foreign key constraint)
-        self._conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
-        self._conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
-        self._conn.commit()
+        # Delete chat history key
+        self.client.delete(f"chat:{session_id}")
 
     # Chat history methods
 
@@ -176,18 +131,14 @@ class KVStore:
             content: Message content
 
         Returns:
-            Message ID
+            Message ID (index in list + 1)
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        msg = {"role": role, "content": content, "timestamp": datetime.now(UTC).isoformat()}
 
-        cursor = self._conn.execute(
-            "INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
-            (session_id, role, content),
-        )
-        self._conn.commit()
-        return cursor.lastrowid or 0
+        # Store as JSON string in a list
+        # RPUSH returns the length of the list after push
+        count = self.client.rpush(f"chat:{session_id}", json.dumps(msg))
+        return count
 
     def get_recent_messages(self, session_id: str, limit: int = 10) -> list[dict[str, Any]]:
         """Get recent messages for a session.
@@ -199,22 +150,16 @@ class KVStore:
         Returns:
             List of messages in chronological order (oldest first)
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        key = f"chat:{session_id}"
+        if limit <= 0:
+            return []
 
-        rows = self._conn.execute(
-            """SELECT role, content, timestamp FROM chat_history
-               WHERE session_id = ?
-               ORDER BY id DESC LIMIT ?""",
-            (session_id, limit),
-        ).fetchall()
+        # Get last 'limit' messages
+        # LRANGE start stop (inclusive)
+        # To get last N: start = -N, stop = -1
+        raw_msgs = self.client.lrange(key, -limit, -1)
 
-        # Reverse to chronological order (oldest first)
-        return [
-            {"role": row["role"], "content": row["content"], "timestamp": row["timestamp"]}
-            for row in list(reversed(rows))
-        ]
+        return [json.loads(msg) for msg in raw_msgs]
 
     def get_message_count(self, session_id: str) -> int:
         """Get total message count for session.
@@ -225,15 +170,7 @@ class KVStore:
         Returns:
             Number of messages
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        row = self._conn.execute(
-            "SELECT COUNT(*) as count FROM chat_history WHERE session_id = ?",
-            (session_id,),
-        ).fetchone()
-        return row["count"] if row else 0
+        return self.client.llen(f"chat:{session_id}")
 
     # Config cache methods
 
@@ -245,22 +182,11 @@ class KVStore:
             value: Value (will be JSON serialized)
             ttl_seconds: Time to live in seconds (None = no expiration)
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        expires_at = None
-        if ttl_seconds:
-            expires_at = datetime.now(UTC).timestamp() + ttl_seconds
-
-        self._conn.execute(
-            "INSERT OR REPLACE INTO config_cache (key, value, expires_at) VALUES (?, ?, ?)",
-            (key, json.dumps(value), expires_at),
-        )
-        self._conn.commit()
+        # Redis handles TTL natively
+        self.client.set(f"cache:{key}", json.dumps(value), ex=ttl_seconds)
 
     def get_cache(self, key: str) -> Any | None:
-        """Get a cache entry (returns None if expired).
+        """Get a cache entry.
 
         Args:
             key: Cache key
@@ -268,25 +194,10 @@ class KVStore:
         Returns:
             Cached value or None if not found/expired
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        row = self._conn.execute(
-            "SELECT value, expires_at FROM config_cache WHERE key = ?", (key,)
-        ).fetchone()
-
-        if not row:
+        val = self.client.get(f"cache:{key}")
+        if val is None:
             return None
-
-        # Check expiration
-        if row["expires_at"] and float(row["expires_at"]) < datetime.now(UTC).timestamp():
-            # Expired - delete and return None
-            self._conn.execute("DELETE FROM config_cache WHERE key = ?", (key,))
-            self._conn.commit()
-            return None
-
-        return json.loads(row["value"])
+        return json.loads(val)
 
     def delete_cache(self, key: str) -> None:
         """Delete a cache entry.
@@ -294,36 +205,24 @@ class KVStore:
         Args:
             key: Cache key
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        self._conn.execute("DELETE FROM config_cache WHERE key = ?", (key,))
-        self._conn.commit()
+        self.client.delete(f"cache:{key}")
 
     def cleanup_expired(self) -> int:
         """Remove expired cache entries.
 
         Returns:
-            Number of entries deleted
+            Number of entries deleted (Redis does this automatically, so strictly 0)
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        now = datetime.now(UTC).timestamp()
-        cursor = self._conn.execute(
-            "DELETE FROM config_cache WHERE expires_at IS NOT NULL AND expires_at < ?",
-            (now,),
-        )
-        self._conn.commit()
-        return cursor.rowcount
+        # Redis handles active/passive expiration.
+        # We don't need manual cleanup.
+        return 0
 
     def close(self) -> None:
         """Close database connection."""
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        try:
+            self.client.close()
+        except Exception:
+            pass
 
     def __enter__(self) -> KVStore:
         """Context manager entry."""

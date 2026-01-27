@@ -2,23 +2,28 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from redislite import FalkorDB
+
     from .config import NexusConfig
-    from .database import NexusDatabase
 
 from .graph_store import GraphStore
 from .kv_store import KVStore
 
+logger = logging.getLogger(__name__)
+
 
 class HybridDatabase:
-    """Coordinates SQLite (KV), LanceDB (Vector), and KùzuDB (Graph).
+    """Coordinates Redis (KV + Graph) and LanceDB (Vector).
 
-    This class provides a unified interface to three complementary database systems:
-    - SQLite (KV): Fast exact lookups for session state and chat history
-    - LanceDB (Vector): Semantic search via embeddings (existing)
-    - KùzuDB (Graph): Code relationships and dependency graphs
+    This class provides a unified interface to the hybrid database system:
+    - FalkorDBLite (Redis):
+        - KV: Fast exact lookups for session state and chat history
+        - Graph: Code relationships and dependency graphs (Cypher)
+    - LanceDB: Semantic search via embeddings (existing)
 
     Attributes:
         config: Nexus-Dev configuration
@@ -32,8 +37,8 @@ class HybridDatabase:
         """
         self.config = config
         self._kv_store: KVStore | None = None
-        self._vector: NexusDatabase | None = None
         self._graph_store: GraphStore | None = None
+        self._falkor_db: FalkorDB | None = None
 
     def connect(self) -> None:
         """Initialize all database connections.
@@ -45,17 +50,29 @@ class HybridDatabase:
             return
 
         db_path = self.config.get_db_path()
+        # Ensure db directory exists
+        db_path.mkdir(parents=True, exist_ok=True)
 
-        # KV Store (SQLite)
-        kv_path = db_path / "state.db"
-        self._kv_store = KVStore(kv_path)
-        self._kv_store.connect()
+        # Initialize FalkorDBLite (Redis + Graph)
+        try:
+            from redislite import FalkorDB
 
-        # Graph Store (KùzuDB)
-        # KùzuDB creates the directory automatically - don't mkdir first
-        graph_path = db_path / "graph_db"
-        self._graph_store = GraphStore(graph_path)
-        self._graph_store.connect()
+            # FalkorDBLite manages the server process in the specified directory
+            self._falkor_db = FalkorDB(dir=str(db_path))
+
+            # Initialize stores
+            # KVStore needs standard Redis commands -> use .client
+            self._kv_store = KVStore(self._falkor_db.client)
+            # GraphStore needs Graph commands -> use FalkorDB object
+            self._graph_store = GraphStore(self._falkor_db)
+
+            # Initialize schemas/indices
+            self._kv_store.connect()
+            self._graph_store.connect()
+
+        except Exception as e:
+            logger.error(f"Failed to initialize FalkorDBLite: {e}")
+            raise
 
     @property
     def kv(self) -> KVStore:
@@ -112,6 +129,14 @@ class HybridDatabase:
         if self._graph_store:
             self._graph_store.close()
             self._graph_store = None
+
+        if self._falkor_db:
+            try:
+                self._falkor_db.close()
+            except Exception:
+                pass
+            self._falkor_db = None
+            self._falkor_db = None
 
     def __enter__(self) -> HybridDatabase:
         """Context manager entry."""
