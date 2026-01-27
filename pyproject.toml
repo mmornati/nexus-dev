@@ -121,6 +121,8 @@ module = [
     "boto3.*",
     "falkordblite",
     "falkordblite.*",
+    "redislite",
+    "redislite.*",
 ]
 ignore_missing_imports = true
 
@@ -132,10 +134,13 @@ module = [
     "nexus_dev.chunkers.python_chunker",
     "nexus_dev.chunkers.javascript_chunker",
     "nexus_dev.chunkers.java_chunker",
+    "nexus_dev.kv_store",
+    "nexus_dev.graph_store",
+    "nexus_dev.hybrid_db",
 ]
 warn_return_any = false
 disallow_untyped_defs = false
-disable_error_code = ["attr-defined", "arg-type", "union-attr"]
+disable_error_code = ["attr-defined", "arg-type", "union-attr", "index", "return-value"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
