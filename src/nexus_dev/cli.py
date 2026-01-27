@@ -610,6 +610,44 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
         if errors:
             click.echo(f"⚠️  {errors} file(s) failed")
 
+    # Graph indexing for Python files (when hybrid_db is enabled)
+    if config.enable_hybrid_db:
+        from .code_graph import PythonGraphBuilder
+        from .hybrid_db import HybridDatabase
+
+        python_files = [f for f in files_to_index if f.suffix == ".py"]
+        if python_files:
+            if not quiet:
+                click.echo("")
+                click.echo("🔗 Indexing code graph...")
+
+            try:
+                hybrid_db = HybridDatabase(config)
+                hybrid_db.connect()
+                builder = PythonGraphBuilder(hybrid_db.graph, config.project_id)
+
+                graph_errors = 0
+                for file_path in python_files:
+                    try:
+                        stats = builder.index_file(file_path)
+                        if not quiet:
+                            click.echo(
+                                f"  🔗 {file_path.name}: "
+                                f"{stats['functions']}F, {stats['classes']}C, {stats['imports']}I"
+                            )
+                    except Exception as e:
+                        graph_errors += 1
+                        if not quiet:
+                            click.echo(f"  ⚠️ {file_path.name}: Graph failed - {e}")
+
+                hybrid_db.close()
+
+                if not quiet:
+                    click.echo(f"✅ Graph indexed {len(python_files) - graph_errors} Python files")
+            except Exception as e:
+                if not quiet:
+                    click.echo(f"⚠️ Graph indexing failed: {e}")
+
 
 async def _index_chunks_sync(
     chunks: list[Any],
