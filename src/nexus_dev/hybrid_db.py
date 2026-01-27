@@ -49,6 +49,10 @@ class HybridDatabase:
         if not self.config.enable_hybrid_db:
             return
 
+        # Check if already connected
+        if self._kv_store is not None:
+            return
+
         db_path = self.config.get_db_path()
         # Ensure db directory exists
         db_path.mkdir(parents=True, exist_ok=True)
