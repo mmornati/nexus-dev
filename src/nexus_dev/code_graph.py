@@ -58,6 +58,9 @@ class PythonGraphBuilder:
         stats = {"functions": 0, "classes": 0, "imports": 0, "calls": 0}
         rel_path = str(file_path)
 
+        # Track imported names to resolve calls: name -> module_path
+        imported_symbols: dict[str, str] = {}
+
         # Create file node
         self._add_file(rel_path, "python")
 
@@ -65,12 +68,21 @@ class PythonGraphBuilder:
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    self._add_import(rel_path, alias.name)
+                    module_path = self._resolve_module_path(rel_path, alias.name)
+                    self._add_import(rel_path, module_path)
                     stats["imports"] += 1
+                    # Track imported names
+                    name = alias.asname or alias.name
+                    imported_symbols[name] = module_path
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
-                    self._add_import(rel_path, node.module)
+                    module_path = self._resolve_module_path(rel_path, node.module)
+                    self._add_import(rel_path, module_path)
                     stats["imports"] += 1
+                    # Track imported names
+                    for alias in node.names:
+                        name = alias.asname or alias.name
+                        imported_symbols[name] = module_path
             elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 func_id = f"{rel_path}:{node.name}"
                 is_async = isinstance(node, ast.AsyncFunctionDef)
@@ -82,7 +94,7 @@ class PythonGraphBuilder:
                     if isinstance(child, ast.Call):
                         call_name = self._get_call_name(child)
                         if call_name:
-                            self._add_call(func_id, call_name)
+                            self._add_call(func_id, call_name, rel_path, imported_symbols)
                             stats["calls"] += 1
             elif isinstance(node, ast.ClassDef):
                 class_id = f"{rel_path}:{node.name}"
@@ -96,6 +108,28 @@ class PythonGraphBuilder:
                         self._add_inheritance(class_id, base_name)
 
         return stats
+
+    def _resolve_module_path(self, from_file: str, module_name: str) -> str:
+        """Resolve module name to absolute file path.
+
+        Args:
+            from_file: Importing file path
+            module_name: Module to resolve
+
+        Returns:
+            Absolute path to the module file
+        """
+        from_path = Path(from_file)
+        from_dir = from_path.parent
+
+        if module_name.startswith("."):
+            # Relative import
+            module_path = (from_dir / module_name.lstrip(".")).with_suffix(".py")
+        else:
+            # Absolute import (try relative to current dir first)
+            module_path = (from_dir / module_name.replace(".", "/")).with_suffix(".py")
+
+        return str(module_path)
 
     def _add_file(self, file_path: str, language: str) -> None:
         """Add file node to graph.
@@ -112,16 +146,13 @@ class PythonGraphBuilder:
             {"path": file_path, "language": language, "project_id": self.project_id},
         )
 
-    def _add_import(self, from_file: str, module_name: str) -> None:
+    def _add_import(self, from_file: str, module_path: str) -> None:
         """Add import relationship.
 
         Args:
-            from_file: File that contains the import
-            module_name: Module being imported
+            from_file: File that contains the import (absolute path)
+            module_path: Resolved absolute path of imported module
         """
-        # Convert module name to file path (best effort)
-        module_path = module_name.replace(".", "/") + ".py"
-
         # Ensure target file node exists
         self.graph.query(
             """
@@ -224,22 +255,35 @@ class PythonGraphBuilder:
             {"path": file_path, "id": class_id},
         )
 
-    def _add_call(self, caller_id: str, callee_name: str) -> None:
+    def _add_call(
+        self, caller_id: str, callee_name: str, current_file: str, imports: dict[str, str]
+    ) -> None:
         """Add function call relationship.
 
         Args:
             caller_id: ID of the calling function
             callee_name: Name of the called function
+            current_file: Path of the file containing the call
+            imports: Map of imported names to module paths
         """
-        # Find callee function (if exists in graph)
+        # Resolve callee ID
+        if callee_name in imports:
+            # Imported function: module_path:function_name
+            callee_id = f"{imports[callee_name]}:{callee_name}"
+        else:
+            # Assumed local function: current_file:function_name
+            callee_id = f"{current_file}:{callee_name}"
+
+        # Create Check/Merge relationship using IDs
+        # We use MERGE for the callee node to support forward references
         self.graph.query(
             """
             MATCH (caller:Function {id: $caller})
-            MATCH (callee:Function)
-            WHERE callee.name = $callee_name
+            MERGE (callee:Function {id: $callee_id})
+            ON CREATE SET callee.name = $callee_name
             MERGE (caller)-[:CALLS]->(callee)
             """,
-            {"caller": caller_id, "callee_name": callee_name},
+            {"caller": caller_id, "callee_id": callee_id, "callee_name": callee_name},
         )
 
     def _add_inheritance(self, child_id: str, parent_name: str) -> None:
