@@ -1,22 +1,8 @@
 """Tests for GraphStore module using FalkorDBLite."""
 
-from pathlib import Path
-
-import pytest
-from redislite import FalkorDB
-
 from nexus_dev.graph_store import GraphStore
 
-
-@pytest.fixture
-def graph_client(tmp_path: Path):
-    """Create a temporary FalkorDB client."""
-    # GraphStore expects the FalkorDB object itself
-    client = FalkorDB(dir=str(tmp_path / "falkor_graph_db"))
-    yield client
-    # Clean up (flushdb on client attribute)
-    client.client.flushall()
-    client.close()
+# Note: graph_client fixture is provided by conftest.py with module-scoped server
 
 
 def test_graph_store_initialization(graph_client) -> None:

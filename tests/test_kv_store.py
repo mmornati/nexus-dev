@@ -1,22 +1,10 @@
 """Tests for KV store module using Redislite/FalkorDBLite."""
 
-from pathlib import Path
 from time import sleep
-
-import pytest
-from redislite import FalkorDB
 
 from nexus_dev.kv_store import KVStore
 
-
-@pytest.fixture
-def redis_client(tmp_path: Path):
-    """Create a temporary FalkorDB/Redis client."""
-    # kv_store needs the standard Redis client interface, which is at .client
-    # The FalkorDB object itself is the server manager + Graph interface
-    server = FalkorDB(dir=str(tmp_path / "falkor_db"))
-    yield server.client
-    server.close()
+# Note: redis_client fixture is provided by conftest.py with module-scoped server
 
 
 def test_kv_store_initialization(redis_client) -> None:
