@@ -59,6 +59,42 @@ class HybridDatabase:
 
         # Initialize FalkorDBLite (Redis + Graph)
         try:
+            # Monkeypatch redislite/redis compatibility issues
+            # redislite passes 'dir' and other args to redis.Redis, which Redis 5+ rejects
+            try:
+                import redis
+                import redislite.client
+
+                # Fix AttributeError in __del__
+                original_cleanup = redislite.client.RedisMixin._cleanup
+
+                def patched_cleanup(self: Any, *args: Any, **kwargs: Any) -> None:
+                    try:
+                        original_cleanup(self, *args, **kwargs)
+                    except AttributeError:
+                        pass
+                    except Exception:
+                        pass
+
+                redislite.client.RedisMixin._cleanup = patched_cleanup
+
+                # Fix TypeError in __init__
+                original_redis_init = redis.Redis.__init__
+
+                def patched_redis_init(self: Any, *args: Any, **kwargs: Any) -> None:
+                    # Remove arguments that redislite passes but redis doesn't accept
+                    kwargs.pop("dir", None)
+                    kwargs.pop("dbfilename", None)
+                    kwargs.pop("serverconfig", None)
+
+                    original_redis_init(self, *args, **kwargs)
+
+                redis.Redis.__init__ = patched_redis_init  # type: ignore[method-assign]
+                redis.StrictRedis.__init__ = patched_redis_init  # type: ignore[method-assign]
+
+            except ImportError:
+                pass
+
             from redislite import FalkorDB
 
             # FalkorDBLite manages the server process in the specified directory

@@ -616,6 +616,10 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
         from .hybrid_db import HybridDatabase
 
         python_files = [f for f in files_to_index if f.suffix == ".py"]
+        if not quiet:
+            click.echo(f"  (Debug) Hybrid DB enabled: {config.enable_hybrid_db}")
+            click.echo(f"  (Debug) Python files found: {len(python_files)}")
+
         if python_files:
             if not quiet:
                 click.echo("")
