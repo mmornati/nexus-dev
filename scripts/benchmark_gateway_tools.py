@@ -532,7 +532,10 @@ GATEWAY_TOOLS = [
             "type": "object",
             "properties": {
                 "server": {"type": "string", "description": 'Server name (e.g., "github")'},
-                "tool": {"type": "string", "description": 'Tool name (e.g., "create_pull_request")'},
+                "tool": {
+                    "type": "string",
+                    "description": 'Tool name (e.g., "create_pull_request")',
+                },
             },
             "required": ["server", "tool"],
         },
@@ -586,7 +589,7 @@ class GatewayBenchmarkResult:
 class TokenCounter:
     """Token counter using tiktoken."""
 
-    def __init__(self, model: str = "gpt-4o"):
+    def __init__(self, model: str = "gpt-4o") -> None:
         try:
             self.encoding = tiktoken.encoding_for_model(model)
         except KeyError:
@@ -654,7 +657,7 @@ def generate_markdown_report(result: GatewayBenchmarkResult) -> str:
         "",
         "## Impact Analysis",
         "",
-        f"### Per-Request Savings",
+        "### Per-Request Savings",
         f"- **{result.tokens_saved:,} tokens saved** per request",
         f"- At $2.50/1M tokens (GPT-4o input): **${result.tokens_saved * 2.5 / 1_000_000:.6f}** per request",
         "",
@@ -700,7 +703,7 @@ def generate_markdown_report(result: GatewayBenchmarkResult) -> str:
     return "\n".join(lines)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Benchmark MCP Gateway tool consolidation benefits"
     )

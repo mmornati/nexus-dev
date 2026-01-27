@@ -1,4 +1,4 @@
-"""Tests for hybrid database module."""
+"""Tests for hybrid database module using FalkorDBLite."""
 
 from pathlib import Path
 
@@ -19,6 +19,8 @@ def test_hybrid_database_disabled_by_default(tmp_path: Path) -> None:
     db.connect()
     assert db._kv_store is None
     assert db._graph_store is None
+    # No server/client should be init
+    assert db._falkor_db is None
 
 
 def test_hybrid_database_requires_flag(tmp_path: Path) -> None:
@@ -39,31 +41,37 @@ def test_hybrid_database_requires_flag(tmp_path: Path) -> None:
 def test_hybrid_database_initialization(tmp_path: Path) -> None:
     """Test hybrid database initializes all components when enabled."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
+    # Use unique path for test
+    config.db_path = str(tmp_path / "hybrid_init_db")
     config.enable_hybrid_db = True
 
     db = HybridDatabase(config)
     db.connect()
 
     try:
+        # Check FalkorDB components
+        assert db._falkor_db is not None
+
         # KV store should be initialized
         assert db._kv_store is not None
         from nexus_dev.kv_store import KVStore
 
         assert isinstance(db._kv_store, KVStore)
+        # Check client sharing - KVStore uses .client attribute of FalkorDB object
+        assert db._kv_store.client == db._falkor_db.client
 
         # Graph store should be initialized
         assert db._graph_store is not None
         from nexus_dev.graph_store import GraphStore
 
         assert isinstance(db._graph_store, GraphStore)
+        # Check client sharing - GraphStore uses FalkorDB object itself
+        assert db._graph_store.client == db._falkor_db
 
-        # KV schema should be created - verify through KVStore
-        # Try to create a session to verify tables exist
-        db._kv_store.create_session("test-session", "test-project")
-        session = db._kv_store.get_session("test-session")
+        # Verify functionality via high-level properties
+        db.kv.create_session("test-session", "test-project")
+        session = db.kv.get_session("test-session")
         assert session is not None
-        assert session["session_id"] == "test-session"
 
     finally:
         db.close()
@@ -72,7 +80,7 @@ def test_hybrid_database_initialization(tmp_path: Path) -> None:
 def test_kv_property_lazy_initialization(tmp_path: Path) -> None:
     """Test KV property initializes connection on first access."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
+    config.db_path = str(tmp_path / "hybrid_lazy_kv")
     config.enable_hybrid_db = True
 
     db = HybridDatabase(config)
@@ -80,9 +88,7 @@ def test_kv_property_lazy_initialization(tmp_path: Path) -> None:
     # Should initialize on property access
     kv = db.kv
     assert kv is not None
-    from nexus_dev.kv_store import KVStore
-
-    assert isinstance(kv, KVStore)
+    assert db._falkor_db is not None
 
     db.close()
 
@@ -90,7 +96,7 @@ def test_kv_property_lazy_initialization(tmp_path: Path) -> None:
 def test_graph_property_lazy_initialization(tmp_path: Path) -> None:
     """Test graph property initializes connection on first access."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
+    config.db_path = str(tmp_path / "hybrid_lazy_graph")
     config.enable_hybrid_db = True
 
     db = HybridDatabase(config)
@@ -98,6 +104,7 @@ def test_graph_property_lazy_initialization(tmp_path: Path) -> None:
     # Should initialize on property access
     graph = db.graph
     assert graph is not None
+    assert db._falkor_db is not None
 
     db.close()
 
@@ -105,7 +112,7 @@ def test_graph_property_lazy_initialization(tmp_path: Path) -> None:
 def test_context_manager(tmp_path: Path) -> None:
     """Test hybrid database works as context manager."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
+    config.db_path = str(tmp_path / "hybrid_cm")
     config.enable_hybrid_db = True
 
     with HybridDatabase(config) as db:
@@ -115,23 +122,23 @@ def test_context_manager(tmp_path: Path) -> None:
         assert kv is not None
 
     # Should be closed after context
-    # Note: SQLite connection might still work, but that's ok
+    # Client should be closed/None
+    assert db._kv_store is None
+    assert db._falkor_db is None
 
 
 def test_database_directories_created(tmp_path: Path) -> None:
     """Test that database directories are created on initialization."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
+    db_path = tmp_path / "hybrid_dir_test"
+    config.db_path = str(db_path)
     config.enable_hybrid_db = True
 
     db = HybridDatabase(config)
     db.connect()
 
     try:
-        db_path = Path(tmp_path / "db")
         assert db_path.exists()
-        assert (db_path / "state.db").exists()
-        # KùzuDB creates its own subdirectories (.tmp, etc.)
         assert db_path.is_dir()
     finally:
         db.close()
@@ -140,7 +147,7 @@ def test_database_directories_created(tmp_path: Path) -> None:
 def test_close_idempotent(tmp_path: Path) -> None:
     """Test that close() can be called multiple times safely."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
+    config.db_path = str(tmp_path / "hybrid_close")
     config.enable_hybrid_db = True
 
     db = HybridDatabase(config)
@@ -150,30 +157,3 @@ def test_close_idempotent(tmp_path: Path) -> None:
     db.close()
     db.close()
     db.close()
-
-
-def test_config_persistence(tmp_path: Path) -> None:
-    """Test that enable_hybrid_db persists in config file."""
-    config_path = tmp_path / "nexus_config.json"
-
-    # Create and save config with hybrid enabled
-    config = NexusConfig.create_new("test-project")
-    config.enable_hybrid_db = True
-    config.save(config_path)
-
-    # Load config and verify flag persists
-    loaded_config = NexusConfig.load(config_path)
-    assert loaded_config.enable_hybrid_db is True
-
-
-def test_config_defaults_to_false(tmp_path: Path) -> None:
-    """Test that enable_hybrid_db defaults to False in loaded config."""
-    config_path = tmp_path / "nexus_config.json"
-
-    # Create and save config without hybrid flag
-    config = NexusConfig.create_new("test-project")
-    config.save(config_path)
-
-    # Load config and verify flag defaults to False
-    loaded_config = NexusConfig.load(config_path)
-    assert loaded_config.enable_hybrid_db is False

@@ -1,6 +1,6 @@
 """Tests for get_recent_context tool."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -10,14 +10,20 @@ from nexus_dev.hybrid_db import HybridDatabase
 
 
 @pytest.fixture
-def mock_hybrid_db(tmp_path):
-    """Create a temporary HybridDatabase with some data."""
+def mock_hybrid_db(redis_client):
+    """Create a HybridDatabase using the shared Redis client."""
     config = NexusConfig.create_new("test-project")
-    config.db_path = str(tmp_path / "db")
     config.enable_hybrid_db = True
 
+    # Create a hybrid database but use the existing shared redis client
     db = HybridDatabase(config)
-    db.connect()
+    # Manually initialize with the shared client instead of creating new FalkorDB
+    from nexus_dev.kv_store import KVStore
+
+    # Create falkor db wrapper with the existing client
+    db._falkor_db = MagicMock()
+    db._kv_store = KVStore(redis_client)
+    db._graph_store = MagicMock()  # Not used in this test
 
     # Add some sample data
     db.kv.create_session("test-session", "test-project")

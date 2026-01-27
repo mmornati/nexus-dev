@@ -87,7 +87,7 @@ class TokenCounter:
         "gpt-3.5-turbo": {"input": 0.50 / 1_000_000, "output": 1.50 / 1_000_000},
     }
 
-    def __init__(self, model: str = "gpt-4o"):
+    def __init__(self, model: str = "gpt-4o") -> None:
         self.model = model
         try:
             self.encoding = tiktoken.encoding_for_model(model)
@@ -130,13 +130,15 @@ def measure_file_read_cost(
             content = path.read_text(encoding="utf-8")
             tokens = counter.count(content)
             total_tokens += tokens
-            details.append({
-                "file": str(path.name),
-                "path": str(path),
-                "lines": len(content.splitlines()),
-                "chars": len(content),
-                "tokens": tokens,
-            })
+            details.append(
+                {
+                    "file": str(path.name),
+                    "path": str(path),
+                    "lines": len(content.splitlines()),
+                    "chars": len(content),
+                    "tokens": tokens,
+                }
+            )
         except Exception as e:
             details.append({"file": str(path), "error": str(e)})
 
@@ -168,12 +170,14 @@ def measure_rag_search_cost(
         text = result.get("text", "")
         tokens = counter.count(text)
         total_tokens += tokens
-        details.append({
-            "name": result.get("name", "unknown"),
-            "file": result.get("file_path", ""),
-            "chars": len(text),
-            "tokens": tokens,
-        })
+        details.append(
+            {
+                "name": result.get("name", "unknown"),
+                "file": result.get("file_path", ""),
+                "chars": len(text),
+                "tokens": tokens,
+            }
+        )
 
     return TokenReport(
         method="rag_search",
@@ -208,12 +212,14 @@ def simulate_rag_results(query: str, files: list[Path]) -> list[dict[str, Any]]:
             # Simulate chunking: take first max_chunk_size chars
             # Real RAG would return semantic chunks
             chunk = content[:max_chunk_size]
-            results.append({
-                "name": path.stem,
-                "file_path": str(path),
-                "text": chunk,
-                "chunk_type": "simulated",
-            })
+            results.append(
+                {
+                    "name": path.stem,
+                    "file_path": str(path),
+                    "text": chunk,
+                    "chunk_type": "simulated",
+                }
+            )
         except Exception:
             continue
 
@@ -239,9 +245,9 @@ def run_benchmark(
         List of comparison reports.
     """
     if use_real_rag:
-        return asyncio.run(_run_benchmark_async(
-            test_cases, project_dir, counter, use_real_rag=True
-        ))
+        return asyncio.run(
+            _run_benchmark_async(test_cases, project_dir, counter, use_real_rag=True)
+        )
     else:
         return _run_benchmark_sync(test_cases, project_dir, counter)
 
@@ -257,9 +263,7 @@ def _run_benchmark_sync(
     for case in test_cases:
         name = case.get("name", "unknown")
         description = case.get("description", "")
-        traditional_files = [
-            project_dir / f for f in case.get("traditional_files", [])
-        ]
+        traditional_files = [project_dir / f for f in case.get("traditional_files", [])]
         rag_query = case.get("rag_query", "")
 
         # Measure traditional approach
@@ -269,12 +273,14 @@ def _run_benchmark_sync(
         rag_results = simulate_rag_results(rag_query, traditional_files)
         rag = measure_rag_search_cost(rag_results, counter)
 
-        reports.append(ComparisonReport(
-            test_name=name,
-            description=description,
-            traditional=traditional,
-            rag=rag,
-        ))
+        reports.append(
+            ComparisonReport(
+                test_name=name,
+                description=description,
+                traditional=traditional,
+                rag=rag,
+            )
+        )
 
     return reports
 
@@ -313,9 +319,7 @@ async def _run_benchmark_async(
     for case in test_cases:
         name = case.get("name", "unknown")
         description = case.get("description", "")
-        traditional_files = [
-            project_dir / f for f in case.get("traditional_files", [])
-        ]
+        traditional_files = [project_dir / f for f in case.get("traditional_files", [])]
         rag_query = case.get("rag_query", "")
 
         # Measure traditional approach
@@ -346,15 +350,16 @@ async def _run_benchmark_async(
 
         rag = measure_rag_search_cost(rag_results, counter)
 
-        reports.append(ComparisonReport(
-            test_name=name,
-            description=description,
-            traditional=traditional,
-            rag=rag,
-        ))
+        reports.append(
+            ComparisonReport(
+                test_name=name,
+                description=description,
+                traditional=traditional,
+                rag=rag,
+            )
+        )
 
     return reports
-
 
 
 def generate_markdown_report(reports: list[ComparisonReport]) -> str:
@@ -387,61 +392,65 @@ def generate_markdown_report(reports: list[ComparisonReport]) -> str:
         )
 
     # Overall savings
-    if total_traditional > 0:
-        overall_savings = (1 - total_rag / total_traditional) * 100
-    else:
-        overall_savings = 0
+    overall_savings = (1 - total_rag / total_traditional) * 100 if total_traditional > 0 else 0
 
-    lines.extend([
-        f"| **Total** | **{total_traditional:,}** | **{total_rag:,}** | **{overall_savings:.1f}%** |",
-        "",
-        "## Cost Estimation (GPT-4o pricing)",
-        "",
-        "| Metric | Traditional | RAG | Savings |",
-        "|--------|-------------|-----|---------|",
-        f"| Input tokens | {total_traditional:,} | {total_rag:,} | {total_traditional - total_rag:,} |",
-        f"| Cost (USD) | ${total_traditional * 2.5 / 1_000_000:.6f} | "
-        f"${total_rag * 2.5 / 1_000_000:.6f} | "
-        f"${(total_traditional - total_rag) * 2.5 / 1_000_000:.6f} |",
-        "",
-    ])
+    lines.extend(
+        [
+            f"| **Total** | **{total_traditional:,}** | **{total_rag:,}** | **{overall_savings:.1f}%** |",
+            "",
+            "## Cost Estimation (GPT-4o pricing)",
+            "",
+            "| Metric | Traditional | RAG | Savings |",
+            "|--------|-------------|-----|---------|",
+            f"| Input tokens | {total_traditional:,} | {total_rag:,} | {total_traditional - total_rag:,} |",
+            f"| Cost (USD) | ${total_traditional * 2.5 / 1_000_000:.6f} | "
+            f"${total_rag * 2.5 / 1_000_000:.6f} | "
+            f"${(total_traditional - total_rag) * 2.5 / 1_000_000:.6f} |",
+            "",
+        ]
+    )
 
     # Detailed breakdown per test
-    lines.extend([
-        "## Detailed Breakdown",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Detailed Breakdown",
+            "",
+        ]
+    )
 
     for report in reports:
-        lines.extend([
-            f"### {report.test_name}",
-            f"*{report.description}*",
-            "",
-            "**Traditional (file read):**",
-        ])
+        lines.extend(
+            [
+                f"### {report.test_name}",
+                f"*{report.description}*",
+                "",
+                "**Traditional (file read):**",
+            ]
+        )
         for detail in report.traditional.details:
             if "error" in detail:
                 lines.append(f"- ❌ {detail['file']}: {detail['error']}")
             else:
                 lines.append(
-                    f"- 📄 `{detail['file']}`: {detail['lines']} lines, "
-                    f"{detail['tokens']:,} tokens"
+                    f"- 📄 `{detail['file']}`: {detail['lines']} lines, {detail['tokens']:,} tokens"
                 )
 
-        lines.extend([
-            "",
-            "**RAG (semantic search):**",
-        ])
+        lines.extend(
+            [
+                "",
+                "**RAG (semantic search):**",
+            ]
+        )
         for detail in report.rag.details:
-            lines.append(
-                f"- 🔍 `{detail['name']}`: {detail['tokens']:,} tokens"
-            )
+            lines.append(f"- 🔍 `{detail['name']}`: {detail['tokens']:,} tokens")
 
-        lines.extend([
-            "",
-            f"**Savings: {report.savings_percent:.1f}% ({report.tokens_saved:,} tokens)**",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                f"**Savings: {report.savings_percent:.1f}% ({report.tokens_saved:,} tokens)**",
+                "",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -476,7 +485,7 @@ def get_default_test_cases() -> list[dict[str, Any]]:
     ]
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Benchmark token efficiency of RAG vs traditional file reading",
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -30,7 +30,7 @@ dependencies = [
     "tree-sitter-language-pack>=0.7.0", # Pre-built parsers (100+ languages)
     "jsonschema>=4.18.0",               # JSON schema validation
     "pandas>=2.0.0",                    # DataFrame support for LanceDB
-    "kuzu>=0.7.0",                      # Graph database
+    "falkordblite>=0.7.0",              # Graph & KV database (Redis + FalkorDB)
 ]
 
 [project.optional-dependencies]
@@ -119,8 +119,10 @@ module = [
     "cohere.*",
     "boto3",
     "boto3.*",
-    "kuzu",
-    "kuzu.*",
+    "falkordblite",
+    "falkordblite.*",
+    "redislite",
+    "redislite.*",
 ]
 ignore_missing_imports = true
 
@@ -132,10 +134,13 @@ module = [
     "nexus_dev.chunkers.python_chunker",
     "nexus_dev.chunkers.javascript_chunker",
     "nexus_dev.chunkers.java_chunker",
+    "nexus_dev.kv_store",
+    "nexus_dev.graph_store",
+    "nexus_dev.hybrid_db",
 ]
 warn_return_any = false
 disallow_untyped_defs = false
-disable_error_code = ["attr-defined", "arg-type", "union-attr"]
+disable_error_code = ["attr-defined", "arg-type", "union-attr", "index", "return-value"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,65 +1,63 @@
-"""Tests for GraphStore module."""
-
-from pathlib import Path
+"""Tests for GraphStore module using FalkorDBLite."""
 
 from nexus_dev.graph_store import GraphStore
 
+# Note: graph_client fixture is provided by conftest.py with module-scoped server
 
-def test_graph_store_initialization(tmp_path: Path) -> None:
-    """Test graph store creates database and schema."""
-    db_path = tmp_path / "graph_db"
 
-    gs = GraphStore(db_path)
+def test_graph_store_initialization(graph_client) -> None:
+    """Test graph store creates indices."""
+    gs = GraphStore(graph_client, "test_graph")
     gs.connect()
 
-    try:
-        assert db_path.exists()
+    # Verify schema by inserting nodes
+    # FalkorDB Cypher
+    gs.query("CREATE (:File {path: 'test.py', language: 'python', size: 100})")
 
-        # Verify schema by inserting nodes
-        gs.query("CREATE (:File {path: 'test.py', language: 'python', size: 100})")
-        gs.query(
-            "CREATE (:Function {id: 'func1', name: 'my_func', "
-            "signature: 'def my_func():', async_func: false, "
-            "start_line: 1, end_line: 10})"
-        )
-        gs.query("CREATE (:Class {id: 'class1', name: 'MyClass', start_line: 20, end_line: 30})")
+    gs.query(
+        "CREATE (:Function {id: 'func1', name: 'my_func', "
+        "signature: 'def my_func():', async_func: false, "
+        "start_line: 1, end_line: 10})"
+    )
 
-        # Verify schema by inserting relationships
-        gs.query(
-            "MATCH (f:File), (fn:Function) "
-            "WHERE f.path = 'test.py' AND fn.id = 'func1' "
-            "CREATE (f)-[:DEFINES]->(fn)"
-        )
+    # Verify relationships
+    gs.query(
+        "MATCH (f:File), (fn:Function) "
+        "WHERE f.path = 'test.py' AND fn.id = 'func1' "
+        "CREATE (f)-[:DEFINES]->(fn)"
+    )
 
-        # Query back
-        res = gs.query("MATCH (f:File)-[:DEFINES]->(fn:Function) RETURN f.path, fn.name")
-        while res.has_next():
-            row = res.get_next()
-            assert row[0] == "test.py"
-            assert row[1] == "my_func"
+    # Query back
+    res = gs.query("MATCH (f:File)-[:DEFINES]->(fn:Function) RETURN f.path, fn.name")
 
-    finally:
-        gs.close()
+    # FalkorDB result iteration (use .result_set)
+    results = res.result_set
+    assert len(results) == 1
+    assert results[0][0] == "test.py"
+    assert results[0][1] == "my_func"
 
 
-def test_context_manager(tmp_path: Path) -> None:
+def test_context_manager(graph_client) -> None:
     """Test context manager support."""
-    db_path = tmp_path / "graph_db"
-
-    with GraphStore(db_path) as gs:
+    with GraphStore(graph_client, "ctx_graph") as gs:
         gs.query("CREATE (:File {path: 'test.py', language: 'python'})")
 
-    # Reopen and check
-    with GraphStore(db_path) as gs:
-        res = gs.query("MATCH (n:File) RETURN n.path")
-        assert res.has_next()
-        assert res.get_next()[0] == "test.py"
+    # Reopen (reuse client)
+    gs2 = GraphStore(graph_client, "ctx_graph")
+    res = gs2.query("MATCH (n:File) RETURN n.path")
+    results = res.result_set
+    assert len(results) == 1
+    assert results[0][0] == "test.py"
 
 
-def test_idempotent_close(tmp_path: Path) -> None:
-    """Test close can be called multiple times."""
-    db_path = tmp_path / "graph_db"
-    gs = GraphStore(db_path)
+def test_delete_graph(graph_client) -> None:
+    """Test deleting graph."""
+    gs = GraphStore(graph_client, "del_graph")
     gs.connect()
-    gs.close()
-    gs.close()
+    gs.query("CREATE (:Node {id: 1})")
+
+    gs.delete_graph()
+
+    # Should be empty or not exist
+    res = gs.query("MATCH (n) RETURN n")
+    assert len(res.result_set) == 0

@@ -1,173 +1,86 @@
-"""KùzuDB-based graph store for code structure and relationships."""
+"""FalkorDB-based graph store for code structure and relationships."""
 
 from __future__ import annotations
 
 import logging
-import shutil
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import kuzu
+    from redislite import FalkorDB
 
 logger = logging.getLogger(__name__)
 
 
 class GraphStore:
-    """KùzuDB-based graph store for code relationships.
+    """FalkorDB-based graph store for code relationships.
 
     Manages the graph database schema and connections for:
     - Code structure (Files, Functions, Classes)
     - Relationships (DEFINES, IMPORTS, CALLS, INHERITS_FROM)
 
     Attributes:
-        db_path: Path to KùzuDB database directory
+        client: FalkorDB client (Redis client with graph capabilities)
+        graph_name: Name of the graph key in Redis
     """
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, client: FalkorDB, graph_name: str = "nexus_code_graph") -> None:
         """Initialize Graph store.
 
         Args:
-            db_path: Path to KùzuDB database directory
+            client: FalkorDB client
+            graph_name: Key for the graph data
         """
-        self.db_path = db_path
-        self._db: kuzu.Database | None = None
-        self._conn: kuzu.Connection | None = None
+        self.client = client
+        self.graph_name = graph_name
+        self._graph = client.select_graph(graph_name)
 
     def connect(self) -> None:
-        """Connect and initialize schema.
+        """Initialize schema.
 
-        Creates database directory and schema if they don't exist.
+        FalkorDB is schema-less but supports indices.
         """
-        import kuzu
-
-        # KùzuDB creates the directory automatically
-        try:
-            self._db = kuzu.Database(str(self.db_path))
-            self._conn = kuzu.Connection(self._db)
-            self._init_schema()
-        except Exception as e:
-            logger.error(f"Failed to connect to graph store at {self.db_path}: {e}")
-            raise
+        self._init_schema()
 
     def _init_schema(self) -> None:
-        """Create graph schema if not exist."""
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
+        """Create graph indices."""
+        # Create indices for faster lookup
+        indices = [
+            ("File", "path"),
+            ("Module", "name"),
+            ("Class", "id"),
+            ("Function", "id"),
+        ]
 
-        # Node Tables
-        # -----------
-
-        # File Node
-        # Stores information about source files
-        self._conn.execute("""
-            CREATE NODE TABLE IF NOT EXISTS File (
-                path STRING,
-                language STRING,
-                size INT64,
-                last_modified STRING,
-                PRIMARY KEY (path)
-            )
-        """)
-
-        # Module Node
-        # Stores Python modules / packages
-        self._conn.execute("""
-            CREATE NODE TABLE IF NOT EXISTS Module (
-                name STRING,
-                PRIMARY KEY (name)
-            )
-        """)
-
-        # Class Node
-        # Stores class definitions
-        self._conn.execute("""
-            CREATE NODE TABLE IF NOT EXISTS Class (
-                id STRING,
-                name STRING,
-                start_line INT64,
-                end_line INT64,
-                PRIMARY KEY (id)
-            )
-        """)
-
-        # Function Node
-        # Stores function/method definitions
-        self._conn.execute("""
-            CREATE NODE TABLE IF NOT EXISTS Function (
-                id STRING,
-                name STRING,
-                signature STRING,
-                async_func BOOL,
-                start_line INT64,
-                end_line INT64,
-                PRIMARY KEY (id)
-            )
-        """)
-
-        # Relationship Tables (Edges)
-        # ---------------------------
-
-        # DEFINES: File -> Function/Class
-        self._conn.execute("""
-            CREATE REL TABLE IF NOT EXISTS DEFINES (
-                FROM File TO Function,
-                FROM File TO Class
-            )
-        """)
-
-        # IMPORTS: File -> Module
-        self._conn.execute("""
-            CREATE REL TABLE IF NOT EXISTS IMPORTS (
-                FROM File TO Module
-            )
-        """)
-
-        # CALLS: Function -> Function
-        # Captures static call graph
-        self._conn.execute("""
-            CREATE REL TABLE IF NOT EXISTS CALLS (
-                FROM Function TO Function
-            )
-        """)
-
-        # INHERITS_FROM: Class -> Class
-        self._conn.execute("""
-            CREATE REL TABLE IF NOT EXISTS INHERITS_FROM (
-                FROM Class TO Class
-            )
-        """)
+        for label, prop in indices:
+            try:
+                # This creates an index on :Label(prop)
+                self._graph.query(f"CREATE INDEX FOR (n:{label}) ON (n.{prop})")
+            except Exception as e:
+                # Indices might already exist
+                logger.debug(f"Index creation for {label}.{prop} returned: {e}")
 
     def query(self, cypher: str, params: dict[str, Any] | None = None) -> Any:
         """Execute a Cypher query.
 
         Args:
             cypher: Cypher query string
-            params: Query parameters (not yet fully supported by Kùzu Python API in all versions)
+            params: Query parameters
 
         Returns:
             QueryResult
         """
-        if self._conn is None:
-            msg = "Not connected to database"
-            raise RuntimeError(msg)
-
-        # Note: Kùzu Python API handling of params varies by version.
-        # For safety in this MVP, we rely on the connection.execute method.
-        # In production, ensure proper parameter binding to prevent injection.
-        return self._conn.execute(cypher, params or {})
+        return self._graph.query(cypher, params or {})
 
     def close(self) -> None:
         """Close database connection."""
-        self._conn = None
-        self._db = None
+        pass
 
-    def reset(self) -> None:
-        """Delete the entire graph database (Dangerous!)."""
-        self.close()
-        if self.db_path.exists():
-            shutil.rmtree(self.db_path)
+    def delete_graph(self) -> None:
+        """Delete the entire graph."""
+        try:
+            self._graph.delete()
+        except Exception:
+            pass
 
     def __enter__(self) -> GraphStore:
         """Context manager entry."""
