@@ -1,0 +1,43 @@
+# Nexus-Dev: .geminiignore
+# Excludes files from the AI agent's context window ("Brain")
+# Similar to .cursorignore or .gitignore
+
+# Dependencies
+**/node_modules/
+**/venv/
+**/.venv/
+**/__pycache__/
+
+# Build Artifacts
+**/dist/
+**/build/
+**/target/
+**/.next/
+**/.nuxt/
+**/.output/
+
+# Version Control
+.git/
+.svn/
+.hg/
+
+# Large Data & Media
+**/*.lock
+**/*.svg
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.mp4
+**/*.mov
+**/*.pdf
+**/*.zip
+**/*.tar.gz
+**/*.sql
+**/*.sqlite
+**/*.db
+**/*.csv
+**/*.jsonl
+
+# Nexus-Dev Internal
+.nexus/db/

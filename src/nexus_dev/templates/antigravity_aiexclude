@@ -1,0 +1,19 @@
+# Nexus-Dev: .aiexclude
+# Explicitly opt-out files from ANY AI processing (Google Code Assist, Copilot, etc.)
+# Used for sensitive data or policy-restricted code
+
+# Sensitive Data
+**/.env*
+**/config/secrets/
+**/*.pem
+**/*.key
+**/*.cert
+**/id_rsa
+**/id_dsa
+
+# PII / User Data
+**/test_data/sensitive/
+**/fixtures/users/
+
+# Governance
+**/legal/restricted/

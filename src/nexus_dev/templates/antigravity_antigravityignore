@@ -1,0 +1,33 @@
+# Nexus-Dev: .antigravityignore
+# Excludes files from IDE indexing to improve performance/disk usage
+
+# Dependencies & Environments
+node_modules/
+vendor/
+.venv/
+venv/
+env/
+
+# Build & Dist
+dist/
+build/
+out/
+target/
+bin/
+obj/
+
+# Mobile/Platform specific
+.gradle/
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Nexus-Dev Database
+.nexus/db/
