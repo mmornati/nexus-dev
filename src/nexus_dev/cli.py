@@ -275,28 +275,201 @@ def init_command(
         click.echo("⚠️  Using OpenAI embeddings. Ensure OPENAI_API_KEY is set.")
 
     click.echo("")
+    click.echo("")
     click.echo("----------------------------------------------------------------")
-    click.echo("🤖 COPY-PASTE THIS INTO YOUR AGENT'S SYSTEM PROMPT OR RULES:")
+    click.echo("🤖 Agent Configuration")
     click.echo("----------------------------------------------------------------")
-    click.echo(f"""
-## Nexus-Dev Knowledge Base
 
-You have access to a local RAG system for this project.
+    # Prompt to run agent configuration
+    if click.confirm("Create AI agent configuration files (AGENTS.md)?", default=True):
+        ctx = click.get_current_context()
+        ctx.invoke(agent_config_command, editor=None)
+    else:
+        click.echo("Skipping agent configuration. Run 'nexus-agent-config' later to generate it.")
 
-**Project ID:** {config.project_id}
-
-**MANDATORY**: You MUST use `nexus-dev` tools BEFORE answering questions about this code.
-1. `search_knowledge("{config.project_name} <query>")` - Search code, docs, and lessons
-2. `search_code("<class/function_name>")` - Find specific code definitions
-3. `search_lessons("<error/problem>")` - Check for past solutions
-4. `record_lesson(...)` - Save solutions after fixing non-trivial bugs
-
-**Best Practice:**
-- Start every session with `get_project_context()`
-- Search before writing code
-- Record insights with `record_insight()`
-""")
     click.echo("----------------------------------------------------------------")
+
+
+def detect_editor() -> str:
+    """Detect which AI coding editor is likely in use."""
+    cwd = Path.cwd()
+
+    # Antigravity (Google)
+    if (
+        (cwd / ".antigravity").exists()
+        or (cwd / ".geminiignore").exists()
+        or (cwd / ".antigravityignore").exists()
+    ):
+        return "antigravity"
+
+    # Cursor
+    if (cwd / ".cursor").exists() or (cwd / ".cursorrules").exists():
+        return "cursor"
+
+    # Claude Code
+    if (cwd / ".claude").exists() or (cwd / "CLAUDE.md").exists():
+        return "claude"
+
+    # GitHub Copilot
+    if (cwd / ".github" / "copilot-instructions.md").exists():
+        return "copilot"
+
+    # Windsurf
+    if (cwd / ".windsurfrules").exists() or (cwd / ".windsurf").exists():
+        return "windsurf"
+
+    # Gemini Code Assist
+    if (cwd / "GEMINI.md").exists():
+        return "gemini"
+
+    # Zed
+    if (cwd / ".rules").exists():
+        return "zed"
+
+    # VS Code (generic)
+    if (cwd / ".vscode").exists():
+        return "vscode"
+
+    return "agents"
+
+
+@cli.command("agent-config")
+@click.option(
+    "--editor",
+    type=click.Choice(
+        [
+            "antigravity",
+            "cursor",
+            "claude",
+            "copilot",
+            "windsurf",
+            "gemini",
+            "zed",
+            "vscode",
+            "agents",
+        ]
+    ),
+    help="Explicitly specify the editor to configure.",
+)
+@click.option(
+    "--update/--no-update",
+    default=False,
+    help="Update existing configuration files (merges content where possible).",
+)
+def agent_config_command(editor: str | None, update: bool) -> None:
+    """Create or update AI agent configuration files.
+
+    Generates AGENTS.md and editor-specific configuration files (rules, ignores).
+    Supports: Antigravity, Cursor, Claude, Copilot, Windsurf, Gemini, Zed.
+    """
+    cwd = Path.cwd()
+    config_path = cwd / "nexus_config.json"
+
+    if not config_path.exists():
+        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+        return
+
+    config = NexusConfig.load(config_path)
+
+    # 1. Detect editor if not specified
+    if not editor:
+        editor = detect_editor()
+        click.echo(f"🔍 Detected editor environment: {editor}")
+
+    # 2. Generate AGENTS.md (Primary Source of Truth)
+    agents_md_path = cwd / "AGENTS.md"
+    template_dir = Path(__file__).parent / "templates"
+
+    agents_template_path = template_dir / "AGENTS.md"
+    if not agents_template_path.exists():
+        click.echo("❌ Template AGENTS.md not found in installation.", err=True)
+        return
+
+    agents_content = agents_template_path.read_text(encoding="utf-8")
+
+    # Fill variables
+    agents_content = agents_content.replace("{project_name}", config.project_name)
+    agents_content = agents_content.replace("{project_id}", config.project_id)
+
+    if agents_md_path.exists() and not update:
+        click.echo("⚠️  AGENTS.md already exists. Use --update to overwrite/merge.")
+    else:
+        # For now, simple overwrite on update (could be smarter in future)
+        agents_md_path.write_text(agents_content, encoding="utf-8")
+        click.echo("✅ Created AGENTS.md")
+
+    # 3. Handle Editor-Specific Files
+
+    if editor == "antigravity":
+        # Antigravity: .geminiignore, .antigravityignore, .aiexclude
+        _install_antigravity_files(cwd, template_dir, update)
+
+    elif editor == "cursor":
+        # Cursor: Symlink .cursorrules -> AGENTS.md
+        _create_symlink(cwd / ".cursorrules", agents_md_path, update)
+
+    elif editor == "claude":
+        _create_symlink(cwd / "CLAUDE.md", agents_md_path, update)
+
+    elif editor == "windsurf":
+        _create_symlink(cwd / ".windsurfrules", agents_md_path, update)
+
+    elif editor == "gemini":
+        _create_symlink(cwd / "GEMINI.md", agents_md_path, update)
+
+    elif editor == "zed":
+        _create_symlink(cwd / ".rules", agents_md_path, update)
+
+    elif editor == "copilot":
+        # Copilot doesn't support symlinks well in .github usually, copy it
+        target = cwd / ".github" / "copilot-instructions.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists() or update:
+            shutil.copy(agents_md_path, target)
+            click.echo(f"✅ Created {target.relative_to(cwd)}")
+
+    click.echo("")
+    click.echo(f"🎉 Agent configuration complete for {editor}!")
+
+
+def _install_antigravity_files(cwd: Path, template_dir: Path, update: bool) -> None:
+    """Install Antigravity-specific configuration files."""
+    files = {
+        "antigravity_geminiignore": ".geminiignore",
+        "antigravity_antigravityignore": ".antigravityignore",
+        "antigravity_aiexclude": ".aiexclude",
+    }
+
+    for template_name, target_name in files.items():
+        target_path = cwd / target_name
+        if target_path.exists() and not update:
+            click.echo(f"   Skipping {target_name} (exists)")
+            continue
+
+        template_path = template_dir / template_name
+        if template_path.exists():
+            shutil.copy(template_path, target_path)
+            click.echo(f"✅ Created {target_name}")
+        else:
+            click.echo(f"⚠️  Template {template_name} not found.")
+
+
+def _create_symlink(target: Path, source: Path, update: bool) -> None:
+    """Create a symlink from target to source."""
+    if target.exists():
+        if not update:
+            click.echo(f"   Skipping {target.name} (exists)")
+            return
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+
+    try:
+        target.symlink_to(source.name)
+        click.echo(f"✅ Linked {target.name} -> {source.name}")
+    except OSError as e:
+        # Fallback to copy if symlink fails (e.g. Windows without privileges)
+        shutil.copy(source, target)
+        click.echo(f"✅ Copied {source.name} to {target.name} (symlink failed: {e})")
 
 
 def _install_hook(git_dir_parent: Path, project_root: Path | None = None) -> None:
