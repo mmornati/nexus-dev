@@ -14,7 +14,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Context
@@ -28,6 +28,7 @@ from .gateway.connection_manager import ConnectionManager
 from .github_importer import GitHubImporter
 from .hybrid_db import HybridDatabase
 from .mcp_config import MCPConfig
+from .query_router import HybridQueryRouter, QueryType
 
 # Initialize FastMCP server
 mcp = FastMCP("nexus-dev")
@@ -624,6 +625,69 @@ async def get_recent_context(
 
     except Exception as e:
         return f"Error retrieving context: {e!s}"
+
+
+@mcp.tool()
+async def smart_search(
+    query: str,
+    project_id: str | None = None,
+    session_id: str | None = None,
+) -> str:
+    """Intelligent search that routes to the best tool (Graph, KV, or Vector).
+
+    Use this as the default search tool. It analyzes the query to determine if
+    you are looking for:
+    - Code structure/relations (Graph): "who calls function X", "what imports file Y"
+    - Session context (KV): "what was the last error", "summarize session"
+    - General knowledge (Vector): "how to implement auth", "explain this error"
+
+    Args:
+        query: Natural language query.
+        project_id: Optional project identifier.
+        session_id: Optional session ID for context queries.
+
+    Returns:
+        Formatted search results from the appropriate backend.
+    """
+    router = HybridQueryRouter()
+    intent = router.route(query)
+
+    # 1. Graph Intent
+    if intent.query_type == QueryType.GRAPH and intent.extracted_entity:
+        entity = intent.extracted_entity
+        q_lower = query.lower()
+
+        # Determine specific graph tool based on query patterns
+        if "calls" in q_lower or "callers" in q_lower:
+            return cast(str, await find_callers(entity, project_id))
+
+        elif "imports" in q_lower or "dependencies" in q_lower:
+            # Default to 'both' unless direction is clear
+            direction = "both"
+            if "what imports" in q_lower or "who imports" in q_lower:
+                direction = "imported_by"
+            elif "what does" in q_lower and "import" in q_lower:
+                direction = "imports"
+            return cast(
+                str,
+                await search_dependencies(entity, direction=direction, project_id=project_id),
+            )
+
+        elif "implements" in q_lower or "extends" in q_lower or "subclasses" in q_lower:
+            return cast(str, await find_implementations(entity, project_id))
+
+    # 2. KV Intent (Session Context)
+    elif intent.query_type == QueryType.KV:
+        if session_id:
+            return cast(str, await get_recent_context(session_id))
+        else:
+            return (
+                "Query appears to be about session history, but no 'session_id' was provided. "
+                "Please provide a session_id to search context, or rephrase for general search."
+            )
+
+    # 3. Vector Intent (Default Fallback)
+    return cast(str, await search_knowledge(query, project_id=project_id))
 
 
 def get_hybrid_database() -> HybridDatabase:
