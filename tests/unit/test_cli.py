@@ -25,7 +25,7 @@ class TestCliInit:
             result = runner.invoke(
                 cli,
                 ["init", "--project-name", "test-project", "--no-hook"],
-                input="allow-lessons\n",
+                input="allow-lessons\nn\n",
                 catch_exceptions=False,
             )
 
@@ -37,7 +37,7 @@ class TestCliInit:
         """Test init command creates .nexus/lessons directory."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
             result = runner.invoke(
-                cli, ["init", "--project-name", "test", "--no-hook"], input="allow-lessons\n"
+                cli, ["init", "--project-name", "test", "--no-hook"], input="allow-lessons\nn\n"
             )
 
             assert result.exit_code == 0
@@ -57,7 +57,7 @@ class TestCliInit:
                     "ollama",
                     "--no-hook",
                 ],
-                input="allow-lessons\n",
+                input="allow-lessons\nn\n",
             )
 
             assert result.exit_code == 0
@@ -77,7 +77,7 @@ class TestCliInit:
                     "openai",
                     "--no-hook",
                 ],
-                input="allow-lessons\n",
+                input="allow-lessons\nn\n",
             )
 
             assert result.exit_code == 0
@@ -1852,3 +1852,80 @@ class TestCliMCPDisable:
             result = runner.invoke(cli, ["mcp", "disable", "github"])
 
             assert "Run 'nexus-mcp init' first" in result.output
+
+
+class TestCliAgentConfig:
+    """Test suite for nexus-agent-config command."""
+
+    def test_agent_config_no_nexus_config(self, runner, tmp_path):
+        """Test agent-config fails without nexus_config.json."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(cli, ["agent-config"])
+
+            assert "nexus_config.json not found" in result.output
+
+    def test_agent_config_antigravity_files(self, runner, tmp_path):
+        """Test agent-config generates Antigravity files."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            config = {
+                "project_id": "test-id",
+                "project_name": "Test Project",
+                "embedding_provider": "openai",
+                "embedding_model": "text-embedding-3-small",
+            }
+            (Path.cwd() / "nexus_config.json").write_text(json.dumps(config))
+
+            # Run agent-config for antigravity
+            result = runner.invoke(cli, ["agent-config", "--editor", "antigravity"])
+
+            assert result.exit_code == 0
+            assert "Created AGENTS.md" in result.output
+            assert "Created .geminiignore" in result.output
+            assert "Created .antigravityignore" in result.output
+            assert "Created .aiexclude" in result.output
+
+            # Verify files exist
+            assert (Path.cwd() / "AGENTS.md").exists()
+            assert (Path.cwd() / ".geminiignore").exists()
+            assert (Path.cwd() / ".antigravityignore").exists()
+            assert (Path.cwd() / ".aiexclude").exists()
+
+            # Verify AGENTS.md content
+            agents_content = (Path.cwd() / "AGENTS.md").read_text()
+            assert "Test Project" in agents_content
+            assert "test-id" in agents_content
+
+    def test_agent_config_auto_detect_antigravity(self, runner, tmp_path):
+        """Test agent-config auto-detects Antigravity environment."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text(
+                '{"project_id": "test", "project_name": "Test"}'
+            )
+
+            # Create marker directory
+            (Path.cwd() / ".antigravity").mkdir()
+
+            result = runner.invoke(cli, ["agent-config"])
+
+            assert "Detected editor environment: antigravity" in result.output
+            assert (Path.cwd() / ".geminiignore").exists()
+
+    def test_agent_config_cursor_symlink(self, runner, tmp_path):
+        """Test agent-config creates symlink for Cursor."""
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            # Create nexus config
+            (Path.cwd() / "nexus_config.json").write_text(
+                '{"project_id": "test", "project_name": "Test"}'
+            )
+
+            result = runner.invoke(cli, ["agent-config", "--editor", "cursor"])
+
+            assert result.exit_code == 0
+            # On some systems symlinks might fail and fallback to copy
+            assert (
+                "Linked .cursorrules -> AGENTS.md" in result.output
+                or "Copied AGENTS.md to .cursorrules" in result.output
+            )
+            assert (Path.cwd() / ".cursorrules").exists()
