@@ -67,6 +67,7 @@ nav:
   - Quick Start: quickstart.md
   - Getting Started:
     - Installation: getting-started/installation.md
+    - Docker Usage: getting-started/docker.md
     - Configuration: getting-started/configuration.md
   - CLI Reference:
     - Overview: cli/index.md
@@ -81,6 +82,7 @@ nav:
     - nexus-import-github: cli/import-github.md
     - nexus-mcp: cli/mcp.md
     - nexus-agent: cli/agent.md
+    - nexus-agent-config: cli/agent-config.md
     - nexus-index-mcp: cli/index-mcp.md
   - MCP Tools:
     - Overview: tools/index.md

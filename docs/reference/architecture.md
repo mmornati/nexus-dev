@@ -51,6 +51,41 @@ flowchart TB
 
 ## Component Details
 
+### Hybrid Database Architecture
+
+Nexus-Dev uses a 3-layer hybrid database (ADR-003):
+
+```mermaid
+flowchart TB
+    subgraph Hybrid["HybridDatabase"]
+        direction TB
+        KV["KV Store<br/>(FalkorDBLite/Redis)"]
+        Graph["Graph Store<br/>(FalkorDB)"]
+        Vector["Vector Store<br/>(LanceDB)"]
+    end
+
+    KV -->|"Lookups"| Sessions["Session State"]
+    KV -->|"Cache"| Config["Config Cache"]
+    Graph -->|"Cypher"| CodeGraph["Code Dependencies"]
+    Vector -->|"Search"| Embeddings["Semantic Search"]
+```
+
+#### 1. Vector Layer (LanceDB)
+- **Purpose**: Semantic search over code, docs, and lessons.
+- **Engine**: LanceDB (Serverless).
+- **Storage**: `~/.nexus-dev/db/lancedb/`.
+
+#### 2. Graph Layer (FalkorDB)
+- **Purpose**: Tracks code structure and relationships (imports, calls, inheritance).
+- **Engine**: FalkorDB (via `falkordblite`).
+- **Storage**: Persistent Redis-compatible file.
+- **Querying**: Cypher query language.
+
+#### 3. KV Layer (Redis/FalkorDBLite)
+- **Purpose**: High-speed lookups for session context and chat history.
+- **Engine**: Redis Hash/List (via `falkordblite`).
+- **Performance**: < 10ms latency.
+
 ### MCP Server
 
 Built on [FastMCP](https://github.com/jlowin/fastmcp), providing:

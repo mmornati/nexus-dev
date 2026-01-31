@@ -33,6 +33,7 @@ Created by `nexus-init`, this file controls project-specific settings:
 | `docs_folders` | array | `["docs/", "README.md"]` | Paths to documentation |
 | `include_patterns` | array | `["**/*.py", ...]` | Glob patterns for code files |
 | `exclude_patterns` | array | `["**/node_modules/**", ...]` | Glob patterns to exclude |
+| `enable_hybrid_db` | boolean | `false` | Enable Graph (FalkorDB) and KV (Redis) stores |
 
 ---
 
