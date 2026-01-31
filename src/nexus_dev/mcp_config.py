@@ -102,6 +102,73 @@ class MCPConfig:
             gateway=gateway,
         )
 
+    def merge(self, other: MCPConfig) -> MCPConfig:
+        """Merge another configuration into this one (other overrides this).
+
+        Args:
+            other: The configuration to merge on top of this one.
+
+        Returns:
+            A new MCPConfig instance with merged settings.
+        """
+        # Servers: Merge dictionaries (other overrides this)
+        merged_servers = self.servers.copy()
+        merged_servers.update(other.servers)
+
+        # Profiles: Merge dictionaries (other overrides this)
+        merged_profiles = self.profiles.copy()
+        merged_profiles.update(other.profiles)
+
+        # Gateway: Local overrides global settings
+        # We take the local gateway settings as primary
+        merged_gateway = other.gateway
+
+        return MCPConfig(
+            version=other.version,
+            servers=merged_servers,
+            profiles=merged_profiles,
+            active_profile=other.active_profile,
+            gateway=merged_gateway,
+        )
+
+    @classmethod
+    def load_hierarchical(
+        cls, global_path: Path | None, local_path: Path | None
+    ) -> MCPConfig | None:
+        """Load configuration hierarchically (Global + Local).
+
+        Args:
+            global_path: Path to global config (e.g., ~/.nexus/mcp_config.json).
+            local_path: Path to local config (e.g., project/.nexus/mcp_config.json).
+
+        Returns:
+            Merged MCPConfig, or None if neither exists.
+        """
+        global_config: MCPConfig | None = None
+        local_config: MCPConfig | None = None
+
+        if global_path and global_path.exists():
+            try:
+                global_config = cls.load(global_path)
+            except Exception:
+                # In a real CLI context we might want to warn, but here we proceed
+                pass
+
+        if local_path and local_path.exists():
+            try:
+                local_config = cls.load(local_path)
+            except Exception:
+                pass
+
+        if global_config and local_config:
+            return global_config.merge(local_config)
+        elif global_config:
+            return global_config
+        elif local_config:
+            return local_config
+
+        return None
+
     def get_active_servers(self) -> list[MCPServerConfig]:
         """Get a list of enabled MCP server configurations in the active profile.
 
