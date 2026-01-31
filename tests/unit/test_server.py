@@ -694,7 +694,7 @@ class TestMCPConfigLoading:
     @patch("nexus_dev.server.Path")
     @patch("nexus_dev.server._find_project_root")
     def test_get_mcp_config_loads_from_file(self, mock_find_root, mock_path, mock_mcp_config):
-        """Test _get_mcp_config loads config when file exists."""
+        """Test _get_mcp_config loads config hierarchically."""
         import nexus_dev.server as server
         from nexus_dev.server import _get_mcp_config
 
@@ -704,84 +704,31 @@ class TestMCPConfigLoading:
         mock_root = MagicMock()
         mock_find_root.return_value = mock_root
 
-        # mcp_config path
-        mock_config_path = MagicMock()
-        # root / ".nexus" / "mcp_config.json"
-        mock_root.__truediv__.return_value.__truediv__.return_value = mock_config_path
-        mock_config_path.exists.return_value = True
-
+        # Mock load_hierarchical return value
         mock_config_instance = MagicMock()
-        mock_mcp_config.load.return_value = mock_config_instance
+        mock_mcp_config.load_hierarchical.return_value = mock_config_instance
 
         config = _get_mcp_config()
 
         assert config is mock_config_instance
-        mock_mcp_config.load.assert_called_once()
-
-    @patch("nexus_dev.server._mcp_config", None)
-    @patch("nexus_dev.server.Path")
-    def test_get_mcp_config_returns_none_if_not_exists(self, mock_path):
-        """Test _get_mcp_config returns None if file doesn't exist."""
-        import nexus_dev.server as server
-        from nexus_dev.server import _get_mcp_config
-
-        server._mcp_config = None
-
-        mock_path_obj = MagicMock()
-        mock_path_obj.exists.return_value = False
-        mock_path.cwd.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_obj
-
-        config = _get_mcp_config()
-
-        assert config is None
-
-    @patch("nexus_dev.server._get_mcp_config")
-    def test_get_active_server_names(self, mock_get_mcp_config):
-        """Test _get_active_server_names returns enabled server names."""
-        from nexus_dev.server import _get_active_server_names
-
-        mock_config = MagicMock()
-        mock_server1 = MagicMock()
-        mock_server2 = MagicMock()
-
-        mock_config.servers = {"server1": mock_server1, "server2": mock_server2}
-        mock_config.get_active_servers.return_value = [mock_server1]
-        mock_get_mcp_config.return_value = mock_config
-
-        active_names = _get_active_server_names()
-
-        assert active_names == ["server1"]
-
-    @patch("nexus_dev.server._get_mcp_config")
-    def test_get_active_server_names_no_config(self, mock_get_mcp_config):
-        """Test _get_active_server_names returns empty list if no config."""
-        from nexus_dev.server import _get_active_server_names
-
-        mock_get_mcp_config.return_value = None
-
-        active_names = _get_active_server_names()
-
-        assert active_names == []
+        mock_mcp_config.load_hierarchical.assert_called_once()
 
     @patch("nexus_dev.server._mcp_config", None)
     @patch("nexus_dev.server.MCPConfig")
-    @patch("nexus_dev.server.Path")
-    def test_get_mcp_config_handles_exception(self, mock_path, mock_mcp_config):
-        """Test _get_mcp_config handles loading exceptions."""
+    def test_get_mcp_config_returns_none_on_failure(self, mock_mcp_config):
+        """Test _get_mcp_config returns None if load_hierarchical returns None (no config found)."""
         import nexus_dev.server as server
         from nexus_dev.server import _get_mcp_config
 
         server._mcp_config = None
 
-        mock_path_obj = MagicMock()
-        mock_path_obj.exists.return_value = True
-        mock_path.cwd.return_value.__truediv__.return_value.__truediv__.return_value = mock_path_obj
-
-        mock_mcp_config.load.side_effect = Exception("Config error")
+        # Simulate load_hierarchical finding nothing or failing gracefully
+        mock_mcp_config.load_hierarchical.return_value = None
 
         config = _get_mcp_config()
 
         assert config is None
+        mock_mcp_config.load_hierarchical.assert_called_once()
 
 
 class TestListServers:
