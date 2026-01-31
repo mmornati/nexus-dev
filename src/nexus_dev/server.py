@@ -107,18 +107,20 @@ def _get_config() -> NexusConfig | None:
 def _get_mcp_config() -> MCPConfig | None:
     """Get or load MCP configuration.
 
-    Returns None if no .nexus/mcp_config.json exists in cwd or project root.
+    Loads from:
+    1. Global: ~/.nexus/mcp_config.json
+    2. Local: <project_root>/.nexus/mcp_config.json
+
+    Returns merged configuration, or None if neither exists.
     """
     global _mcp_config
     if _mcp_config is None:
         root = _find_project_root()
-        config_path = (root if root else Path.cwd()) / ".nexus" / "mcp_config.json"
-        if config_path.exists():
-            try:
-                _mcp_config = MCPConfig.load(config_path)
-            except Exception as e:
-                logger.debug("Failed to load MCP config from %s: %s", config_path, e)
-                pass
+        local_path = (root if root else Path.cwd()) / ".nexus" / "mcp_config.json"
+        global_path = Path.home() / ".nexus" / "mcp_config.json"
+
+        _mcp_config = MCPConfig.load_hierarchical(global_path, local_path)
+
     return _mcp_config
 
 
