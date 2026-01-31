@@ -610,17 +610,26 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
         if errors:
             click.echo(f"⚠️  {errors} file(s) failed")
 
-    # Graph indexing for Python files (when hybrid_db is enabled)
+        # Graph indexing (Python + JS/TS)
     if config.enable_hybrid_db:
         from .code_graph import PythonGraphBuilder
+        from .code_graph_js import JSGraphBuilder
         from .hybrid_db import HybridDatabase
 
-        python_files = [f for f in files_to_index if f.suffix == ".py"]
+        # Define supported extensions and their builders
+        graph_files = []
+        for f in files_to_index:
+            ext = f.suffix.lower()
+            if ext in (".py", ".pyw"):
+                graph_files.append((f, "python"))
+            elif ext in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
+                graph_files.append((f, "js"))
+
         if not quiet:
             click.echo(f"  (Debug) Hybrid DB enabled: {config.enable_hybrid_db}")
-            click.echo(f"  (Debug) Python files found: {len(python_files)}")
+            click.echo(f"  (Debug) Code graph files found: {len(graph_files)}")
 
-        if python_files:
+        if graph_files:
             if not quiet:
                 click.echo("")
                 click.echo("🔗 Indexing code graph...")
@@ -628,17 +637,22 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
             try:
                 hybrid_db = HybridDatabase(config)
                 hybrid_db.connect()
-                builder = PythonGraphBuilder(hybrid_db.graph, config.project_id)
+
+                # Initialize builders
+                py_builder = PythonGraphBuilder(hybrid_db.graph, config.project_id)
+                js_builder = JSGraphBuilder(hybrid_db.graph, config.project_id)
 
                 graph_errors = 0
-                for file_path in python_files:
+                for file_path, lang in graph_files:
                     try:
+                        builder = py_builder if lang == "python" else js_builder
                         stats = builder.index_file(file_path)
                         if not quiet:
-                            click.echo(
-                                f"  🔗 {file_path.name}: "
-                                f"{stats['functions']}F, {stats['classes']}C, {stats['imports']}I"
+                            # Format stats string dynamically
+                            stats_str = ", ".join(
+                                f"{v}{k[0].upper()}" for k, v in stats.items() if v > 0
                             )
+                            click.echo(f"  🔗 {file_path.name}: {stats_str or 'No entities'}")
                     except Exception as e:
                         graph_errors += 1
                         if not quiet:
@@ -647,7 +661,7 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
                 hybrid_db.close()
 
                 if not quiet:
-                    click.echo(f"✅ Graph indexed {len(python_files) - graph_errors} Python files")
+                    click.echo(f"✅ Graph indexed {len(graph_files) - graph_errors} files")
             except Exception as e:
                 if not quiet:
                     click.echo(f"⚠️ Graph indexing failed: {e}")
