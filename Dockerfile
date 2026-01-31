@@ -9,6 +9,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast package management
@@ -36,5 +37,8 @@ VOLUME ["/workspace", "/data/nexus-dev"]
 WORKDIR /workspace
 
 # Default command runs MCP server via SSE transport for Docker networking
-ENTRYPOINT ["python", "-m", "nexus_dev.server"]
-CMD ["--transport", "sse", "--host", "0.0.0.0", "--port", "8080"]
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["nexus-dev", "--transport", "sse", "--host", "0.0.0.0", "--port", "8080"]

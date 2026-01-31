@@ -4,6 +4,33 @@ Tools for finding code, documentation, and lessons in your knowledge base.
 
 ---
 
+## smart_search (Default)
+
+Intelligent search that routes your query to the best tool (Graph, KV, or Vector).
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | string | ✅ | - | Natural language query |
+| `project_id` | string | | (current) | Project context |
+| `session_id` | string | | - | Session context (for "recent messages" etc) |
+
+### Example
+
+```python
+smart_search("what calls authenticate_user")
+# -> Routes to find_callers
+
+smart_search("how does authentication work")
+# -> Routes to search_knowledge (Vector)
+
+smart_search("what was the last error")
+# -> Routes to get_recent_context (KV)
+```
+
+---
+
 ## search_knowledge
 
 Search all indexed content with optional type filtering.
@@ -158,3 +185,81 @@ search_implementations("authentication flow")
 3. **Search lessons early**: When encountering an error, search lessons before debugging from scratch.
 
 4. **Cross-project search**: Omit `project_id` when looking for patterns that might exist in other projects.
+
+---
+
+## search_dependencies
+
+Find code dependencies using the graph database.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `target` | string | ✅ | - | File path or module name |
+| `direction` | string | | `both` | `imports`, `imported_by`, `both` |
+| `depth` | int | | `1` | Traversal depth (max 5) |
+| `project_id` | string | | (current) | Project context |
+
+### Example
+
+```python
+search_dependencies("auth.py", direction="imported_by")
+```
+
+---
+
+## find_callers
+
+Find all functions that call the specified function.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `function_name` | string | ✅ | - | Name of function to find callers for |
+| `project_id` | string | | (current) | Project context |
+
+### Example
+
+```python
+find_callers("validate_user")
+```
+
+---
+
+## find_implementations
+
+Find all classes that inherit from the specified class.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `class_name` | string | ✅ | - | Base class name |
+| `project_id` | string | | (current) | Project context |
+
+### Example
+
+```python
+find_implementations("BaseHandler")
+```
+
+---
+
+## get_recent_context
+
+Get recent chat messages from the session history (KV store).
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `session_id` | string | ✅ | - | Session ID |
+| `limit` | int | | `20` | Max messages |
+
+### Example
+
+```python
+get_recent_context(session_id="...")
+```

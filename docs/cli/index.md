@@ -19,6 +19,7 @@ Nexus-Dev provides a comprehensive set of command-line tools for managing your k
 | [nexus-import-github](import-github.md) | Import GitHub issues/PRs |
 | [nexus-mcp](mcp.md) | Start MCP server |
 | [nexus-agent](agent.md) | Run agentic tasks |
+| [nexus-agent-config](agent-config.md) | Configure project agent (AGENTS.md) |
 | [nexus-index-mcp](index-mcp.md) | Index MCP server definitions |
 
 ---

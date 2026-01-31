@@ -9,11 +9,19 @@ services:
       - .:/workspace:ro
       # Persist the database across restarts
       - nexus-data:/data/nexus-dev
-      # Mount MCP config if you have one
-      - ./.nexus:/workspace/.nexus:ro
+      # Mount global nexus config for gateway/agents
+      - ./.nexus:/workspace/.nexus
+      # Mount project config specifically if it exists (optional, as workspace is mounted)
+      # - ./nexus_config.json:/workspace/nexus_config.json:ro
     restart: unless-stopped
     environment:
       - NEXUS_LOG_LEVEL=INFO
+      # Ensure project root is detected correctly in Docker
+      - NEXUS_PROJECT_ROOT=/workspace
+      # Allow connecting to host services (like Ollama)
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   nexus-data:

@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Wrapper script to run nexus-dev commands via Docker
+
+# Check if docker-compose.yml exists, if not warn
+if [ ! -f "docker-compose.yml" ]; then
+    echo "Warning: docker-compose.yml not found in current directory."
+fi
+
+# Define the service name from docker-compose
+SERVICE_NAME="nexus-dev"
+
+# If no arguments provided, show help
+if [ $# -eq 0 ]; then
+    echo "Usage: ./nexus-docker [command]"
+    echo ""
+    echo "Examples:"
+    echo "  ./nexus-docker nexus-status           # Check status"
+    echo "  ./nexus-docker nexus-mcp list         # List MCP servers"
+    echo "  ./nexus-docker nexus-index src/       # Index source code"
+    echo "  ./nexus-docker nexus-dev ...          # Run server directly"
+    echo ""
+    exit 1
+fi
+
+# Run the command in a new container (ephemeral)
+# We mount the current directory as workspace to ensure file operations work
+docker run --rm -it \
+    -v "$(pwd):/workspace" \
+    -v "nexus-data:/data/nexus-dev" \
+    -v "$(pwd)/.nexus:/workspace/.nexus" \
+    -e NEXUS_LOG_LEVEL=INFO \
+    -e NEXUS_PROJECT_ROOT=/workspace \
+    nexus-dev:latest "$@"
