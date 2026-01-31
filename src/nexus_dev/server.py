@@ -1683,6 +1683,69 @@ async def search_implementations(
         return f"Implementation search failed: {e!s}"
 
 
+@mcp.tool()
+async def find_related_entities(
+    query: str,
+    session_id: str | None = None,
+    limit: int = 10,
+) -> str:
+    """Find entities related to the query from session context.
+
+    Use this to discover what code elements and concepts have been
+    discussed together in this session.
+
+    Args:
+        query: Entity or concept to find relations for.
+        session_id: Optional session filter.
+        limit: Maximum results.
+
+    Returns:
+        Related entities with relationship types.
+    """
+    config = _get_config()
+    if not config or not config.enable_hybrid_db:
+        return "Hybrid database not enabled. Set enable_hybrid_db=True in nexus_config.json."
+
+    try:
+        hybrid_db = _get_hybrid_db()
+        if hybrid_db is None:
+            return "Failed to connect to hybrid database."
+
+        # Default session if not provided
+        effective_session = session_id or "default"
+
+        # Find entity nodes matching query
+        search_query = """
+            MATCH (e:Entity)-[r:DISCUSSED|RELATED_TO*1..2]-(related)
+            WHERE e.session_id = $session
+              AND (e.name CONTAINS $query OR related.name CONTAINS $query)
+            RETURN DISTINCT related.name AS name,
+                   labels(related) AS labels,
+                   related.entity_type AS entity_type
+            LIMIT $limit
+        """
+
+        result = hybrid_db.graph.query(
+            search_query,
+            {"session": effective_session, "query": query, "limit": limit},
+        )
+
+        if not result.result_set:
+            return f"No related entities found for '{query}' in session '{effective_session}'."
+
+        lines = [f"## Entities related to '{query}'\n"]
+        for row in result.result_set:
+            name = row[0]
+            labels = row[1] if row[1] else []
+            entity_type = row[2] or (labels[0] if labels else "Entity")
+            lines.append(f"- **{name}** ({entity_type})")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Entity search failed: {e!s}"
+
+
 @mcp.resource("mcp://nexus-dev/active-tools")
 async def get_active_tools_resource() -> str:
     """List MCP tools from active profile servers.
