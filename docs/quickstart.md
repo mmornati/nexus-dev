@@ -170,6 +170,39 @@ Add Nexus-Dev to your MCP client configuration:
 !!! warning "Important: Project Root"
     Set `NEXUS_PROJECT_ROOT` to your project directory. Without this, the server starts empty and you must run `refresh_agents` to load context.
 
+### Alternative: Run via Docker (Stable)
+
+For improved stability, you can run Nexus-Dev in a Docker container.
+
+!!! note "Prerequisite"
+    This method requires cloning the repository and building the image locally.
+
+1.  **Build the image**:
+    ```bash
+    git clone https://github.com/mmornati/nexus-dev.git
+    cd nexus-dev
+    make docker-build
+    ```
+
+2.  **Configure MCP Client**:
+
+    ```json
+    {
+      "mcpServers": {
+        "nexus-dev": {
+          "command": "docker",
+          "args": [
+            "run", "-i", "--rm",
+            "-v", "/path/to/your/project:/workspace:ro",
+            "-v", "nexus-dev-data:/data/nexus-dev",
+            "-e", "OPENAI_API_KEY",
+            "nexus-dev:latest"
+          ]
+        }
+      }
+    }
+    ```
+
 ---
 
 ## Step 6: Verify Setup
