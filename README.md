@@ -20,6 +20,10 @@ Nexus-Dev is an open-source MCP (Model Context Protocol) server that provides a 
 - 🔄 **Cross-Project Learning**: Share knowledge across all your projects
 - 🏠 **Local-First**: All data stays on your machine with LanceDB
 
+## 📖 Full Documentation
+
+For comprehensive documentation, visit [mmornati.github.io/nexus-dev](https://mmornati.github.io/nexus-dev/).
+
 ## Installation
 
 ### Isolated Global Installation (Recommended)

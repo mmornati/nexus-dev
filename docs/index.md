@@ -98,10 +98,22 @@ Nexus-Dev exposes powerful tools to your AI coding assistant:
 
 | Tool | Description |
 |------|-------------|
+
+| `smart_search` | **Start here!** Intelligent search that routes to Graph, History, or Vector search |
 | `search_knowledge` | Search all content (code, docs, lessons) |
 | `search_code` | Find function and class definitions |
 | `search_docs` | Search documentation |
 | `search_lessons` | Find past solutions to problems |
+| `search_insights` | Search recorded insights from past sessions |
+| `search_implementations` | Find how similar features were built previously |
+
+### Graph Tools
+
+| Tool | Description |
+|------|-------------|
+| `find_callers` | Find all functions that call a specific function |
+| `search_dependencies` | Find imports and dependencies (what imports X, what X imports) |
+| `find_implementations` | Find class hierarchies and implementations |
 
 ### Learning Tools
 
@@ -115,8 +127,18 @@ Nexus-Dev exposes powerful tools to your AI coding assistant:
 
 | Tool | Description |
 |------|-------------|
+
 | `search_tools` | Find MCP tools across all servers |
 | `invoke_tool` | Execute tools on backend servers |
+| `list_servers` | List all configured MCP servers and their status |
+| `get_tool_schema` | Get full parameter schema for a specific tool |
+
+### Management Tools
+
+| Tool | Description |
+|------|-------------|
+| `index_file` | Index a file into the knowledge base |
+| `import_github_issues` | Import GitHub issues and PRs for context |
 
 ---
 
