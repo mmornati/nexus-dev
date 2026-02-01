@@ -1599,41 +1599,42 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
     database.connect()
 
     click.echo(f"🔍 Searching for '{query}'...")
-    
+
     # Initialize Hybrid DB (if enabled)
     hybrid_db = None
     if config.enable_hybrid_db:
         from .hybrid_db import HybridDatabase
+
         hybrid_db = HybridDatabase(config)
-    
+
     # Smart Search Routing
     from .query_router import HybridQueryRouter, QueryType
 
     router = HybridQueryRouter()
     intent = router.route(query)
-    
+
     # 1. Graph Intent
     if (
-        intent.query_type == QueryType.GRAPH 
-        and intent.extracted_entity 
-        and hybrid_db 
+        intent.query_type == QueryType.GRAPH
+        and intent.extracted_entity
+        and hybrid_db
         and config.enable_hybrid_db
     ):
         click.echo(f"🧠 Smart Search identified GRAPH intent (Confidence: {intent.confidence})")
         entity = intent.extracted_entity
         q_lower = query.lower()
-        
+
         try:
             # Check Graph Patterns (logic mirrored from server.py)
-            graph_results = []
             hybrid_db.connect()
-            
+
             if "calls" in q_lower or "callers" in q_lower:
                 click.echo(f"   Finding callers of: {entity}")
                 # Find callers logic
                 cypher = f"""
                     MATCH call_path = (caller)-[:CALLS]->(callee {{name: $entity}})
-                    RETURN caller.name as caller_name, caller.file_path as file, caller.start_line as line
+                    RETURN caller.name as caller_name, caller.file_path as file,
+                           caller.start_line as line
                     ORDER BY file, line
                     LIMIT {limit}
                 """
@@ -1653,9 +1654,9 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
                     direction = "imported_by"
                 elif "what does" in q_lower and "import" in q_lower:
                     direction = "imports"
-                
+
                 click.echo(f"   Searching dependencies for: {entity} (direction: {direction})")
-                
+
                 # Check imports (what target imports)
                 if direction in ("imports", "both"):
                     cypher = f"""
@@ -1663,7 +1664,7 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
                         RETURN dep.path AS dependency
                         LIMIT {limit}
                     """
-                    # Note: Using entity as path might need full path resolution, 
+                    # Note: Using entity as path might need full path resolution,
                     # but mimicking server logic for now which takes 'target'
                     # In CLI we might need better path resolution if user types just filename
                     # attempting simple match
@@ -1672,7 +1673,7 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
                         click.echo("\n## Imports (depends on):\n")
                         for row in res.result_set:
                             click.echo(f"→ {row[0]}")
-                            
+
                 # Check imported by (what imports target)
                 if direction in ("imported_by", "both"):
                     cypher = f"""
@@ -1696,20 +1697,22 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
                 """
                 res = hybrid_db.graph.query(cypher, {"entity": entity})
                 if res.result_set:
-                     click.echo("\n## Implementations/Subclasses:\n")
-                     for row in res.result_set:
-                         click.echo(f"↓ {row[0]} (in {row[1]})")
-                     return
+                    click.echo("\n## Implementations/Subclasses:\n")
+                    for row in res.result_set:
+                        click.echo(f"↓ {row[0]} (in {row[1]})")
+                    return
                 else:
                     click.echo("   No implementations found.")
-                    
+
         except Exception as e:
             click.echo(f"⚠️  Graph search failed: {e}")
             click.echo("   Falling back to vector search...")
 
     # 2. KV Intent (Session Context)
     elif intent.query_type == QueryType.KV:
-        click.echo("⚠️  Session context search (KV) is not available in CLI mode (requires active session).")
+        click.echo(
+            "⚠️  Session context search (KV) is not available in CLI mode (requires active session)."
+        )
         click.echo("   Falling back to vector search...")
 
     doc_type_enum = None
