@@ -17,6 +17,7 @@ nexus_config.json and cannot be changed at runtime.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -517,7 +518,8 @@ class BedrockEmbedder(EmbeddingProvider):
             # Amazon Titan format
             body = json.dumps({"inputText": text})
 
-        response = self._client.invoke_model(
+        response = await asyncio.to_thread(
+            self._client.invoke_model,
             body=body,
             modelId=self._model,
             accept="application/json",
@@ -539,7 +541,8 @@ class BedrockEmbedder(EmbeddingProvider):
                 import json
 
                 body = json.dumps({"texts": texts, "input_type": "search_query"})
-                response = self._client.invoke_model(
+                response = await asyncio.to_thread(
+                    self._client.invoke_model,
                     body=body,
                     modelId=self._model,
                     accept="application/json",
@@ -551,11 +554,9 @@ class BedrockEmbedder(EmbeddingProvider):
                 # Fallback to sequential if batch fails
                 pass
 
-        # Sequential fallback for Titan or if batching fails
-        embeddings = []
-        for text in texts:
-            embeddings.append(await self.embed(text))
-        return embeddings
+        # Concurrent fallback for Titan or if batching fails
+        tasks = [self.embed(text) for text in texts]
+        return await asyncio.gather(*tasks)
 
 
 class VoyageEmbedder(EmbeddingProvider):
