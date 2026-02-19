@@ -6,7 +6,7 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import lancedb
@@ -16,7 +16,7 @@ from .config import NexusConfig
 from .embeddings import EmbeddingProvider
 
 
-class DocumentType(str, Enum):
+class DocumentType(StrEnum):
     """Type of indexed document."""
 
     CODE = "code"
