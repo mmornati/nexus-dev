@@ -96,10 +96,19 @@ class HybridDatabase:
 
                     original_redis_init(self, *args, **kwargs)
 
-                redis.Redis.__init__ = patched_redis_init  # type: ignore[method-assign]
-                redis.StrictRedis.__init__ = patched_redis_init  # type: ignore[method-assign]
+                redis.Redis.__init__ = patched_redis_init
+                redis.StrictRedis.__init__ = patched_redis_init
 
-            except ImportError:
+                # Fix AttributeError: 'UnixDomainSocketConnection' object has no attribute 'port'
+                # This happens in some redis-py versions (e.g. 5.2.x) with observability enabled
+                from redis.connection import UnixDomainSocketConnection
+
+                if not hasattr(UnixDomainSocketConnection, "host"):
+                    UnixDomainSocketConnection.host = None
+                if not hasattr(UnixDomainSocketConnection, "port"):
+                    UnixDomainSocketConnection.port = None
+
+            except (ImportError, AttributeError):
                 pass
 
             from redislite import FalkorDB
