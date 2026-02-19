@@ -1122,10 +1122,7 @@ async def index_file(
     # Resolve file path
     root = (_find_project_root() or Path.cwd()).resolve()
     path = Path(file_path)
-    if not path.is_absolute():
-        path = (root / path).resolve()
-    else:
-        path = path.resolve()
+    path = (root / path).resolve() if not path.is_absolute() else path.resolve()
 
     # Security check: ensure path is within root
     try:

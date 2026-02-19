@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class ChunkType(str, Enum):
+class ChunkType(StrEnum):
     """Type of code chunk."""
 
     FUNCTION = "function"
