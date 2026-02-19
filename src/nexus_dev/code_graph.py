@@ -7,6 +7,7 @@ and extracts structural relationships into the FalkorDB graph store.
 from __future__ import annotations
 
 import ast
+from functools import lru_cache
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -109,7 +110,9 @@ class PythonGraphBuilder:
 
         return stats
 
-    def _resolve_module_path(self, from_file: str, module_name: str) -> str:
+    @staticmethod
+    @lru_cache
+    def _resolve_module_path(from_file: str, module_name: str) -> str:
         """Resolve module name to absolute file path.
 
         Args:
