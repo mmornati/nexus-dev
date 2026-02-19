@@ -413,7 +413,7 @@ class TestIndexFile:
         mock_registry.chunk_file.return_value = [mock_chunk]
         mock_registry.get_language.return_value = "python"
 
-        result = await index_file("/test.py", content="def test(): pass")
+        result = await index_file("test.py", content="def test(): pass")
 
         assert "Indexed" in result
         assert "test.py" in result
@@ -428,7 +428,7 @@ class TestIndexFile:
         mock_config.project_id = "test"
         mock_get_config.return_value = mock_config
 
-        result = await index_file("/nonexistent/file.py")
+        result = await index_file("nonexistent/file.py")
 
         assert "Error" in result
         assert "not found" in result
