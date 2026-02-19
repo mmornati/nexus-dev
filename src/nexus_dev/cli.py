@@ -1025,9 +1025,7 @@ def _print_file_summary(files: list[Path]) -> None:
 @click.argument("lesson_file")
 @click.option("-q", "--quiet", is_flag=True, help="Suppress output")
 @requires_config
-def index_lesson_command(
-    config: NexusConfig, lesson_file: str, quiet: bool
-) -> None:
+def index_lesson_command(config: NexusConfig, lesson_file: str, quiet: bool) -> None:
     """Index a lesson file from .nexus/lessons/."""
     path = Path(lesson_file)
     if not path.is_absolute():
@@ -1556,9 +1554,7 @@ def import_github_command(
 @click.option("--type", "content_type", help="Content type to filter by")
 @click.option("--limit", default=5, help="Number of results")
 @requires_config
-def search_command(
-    config: NexusConfig, query: str, content_type: str | None, limit: int
-) -> None:
+def search_command(config: NexusConfig, query: str, content_type: str | None, limit: int) -> None:
     """Search the knowledge base."""
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
