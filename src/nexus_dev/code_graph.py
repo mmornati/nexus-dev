@@ -7,8 +7,8 @@ and extracts structural relationships into the FalkorDB graph store.
 from __future__ import annotations
 
 import ast
-from functools import lru_cache
 import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
