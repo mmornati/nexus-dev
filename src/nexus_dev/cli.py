@@ -14,9 +14,10 @@ import os
 import shutil
 import stat
 from collections import defaultdict
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from datetime import datetime
 from fnmatch import fnmatch
+from functools import update_wrapper
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,6 +76,30 @@ def _find_project_root(start_path: Path | None = None) -> Path | None:
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run async function in sync context."""
     return asyncio.get_event_loop().run_until_complete(coro)
+
+
+def requires_config(f: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator to load and validate configuration before running a command."""
+
+    @click.pass_context
+    def wrapper(ctx: click.Context, *args: Any, **kwargs: Any) -> Any:
+        config_path = Path.cwd() / "nexus_config.json"
+        if not config_path.exists():
+            click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
+            ctx.exit(1)
+
+        try:
+            config = NexusConfig.load(config_path)
+        except Exception as e:
+            click.echo(f"❌ Failed to load configuration: {e}", err=True)
+            ctx.exit(1)
+
+        if not _validate_embeddings_or_exit(config):
+            ctx.exit(1)
+
+        return ctx.invoke(f, *args, config=config, **kwargs)
+
+    return update_wrapper(wrapper, f)
 
 
 @click.group()
@@ -600,7 +625,10 @@ def _update_gitignore(cwd: Path, choice: str) -> None:
     is_flag=True,
     help="Suppress output",
 )
-def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
+@requires_config
+def index_command(
+    config: NexusConfig, paths: tuple[str, ...], recursive: bool, quiet: bool
+) -> None:
     """Manually index files or directories.
 
     PATHS can be files or directories. Use -r to recursively index directories.
@@ -610,18 +638,6 @@ def index_command(paths: tuple[str, ...], recursive: bool, quiet: bool) -> None:
         nexus-index docs/ -r
         nexus-index main.py utils.py
     """
-    # Load config
-    config_path = Path.cwd() / "nexus_config.json"
-    if not config_path.exists():
-        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
-        return
-
-    config = NexusConfig.load(config_path)
-
-    # Validate embedding configuration before proceeding
-    if not _validate_embeddings_or_exit(config):
-        return
-
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1008,7 +1024,10 @@ def _print_file_summary(files: list[Path]) -> None:
 @cli.command("index-lesson")
 @click.argument("lesson_file")
 @click.option("-q", "--quiet", is_flag=True, help="Suppress output")
-def index_lesson_command(lesson_file: str, quiet: bool) -> None:
+@requires_config
+def index_lesson_command(
+    config: NexusConfig, lesson_file: str, quiet: bool
+) -> None:
     """Index a lesson file from .nexus/lessons/."""
     path = Path(lesson_file)
     if not path.is_absolute():
@@ -1017,18 +1036,6 @@ def index_lesson_command(lesson_file: str, quiet: bool) -> None:
     if not path.exists():
         if not quiet:
             click.echo(f"❌ Lesson file not found: {lesson_file}", err=True)
-        return
-
-    # Load config
-    config_path = Path.cwd() / "nexus_config.json"
-    if not config_path.exists():
-        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
-        return
-
-    config = NexusConfig.load(config_path)
-
-    # Validate embedding configuration before proceeding
-    if not _validate_embeddings_or_exit(config):
         return
 
     embedder = create_embedder(config)
@@ -1173,17 +1180,9 @@ def export_command(project_id: str | None, output: Path | None) -> None:
 
 @cli.command("status")
 @click.option("-v", "--verbose", is_flag=True, help="Show detailed debug information")
-def status_command(verbose: bool) -> None:
+@requires_config
+def status_command(config: NexusConfig, verbose: bool) -> None:
     """Show Nexus-Dev status and statistics."""
-    config_path = Path.cwd() / "nexus_config.json"
-
-    if not config_path.exists():
-        click.echo("❌ Nexus-Dev not initialized in this directory.")
-        click.echo("   Run 'nexus-init' to get started.")
-        return
-
-    config = NexusConfig.load(config_path)
-
     click.echo("📊 Nexus-Dev Status")
     click.echo("")
     click.echo(f"Project: {config.project_name}")
@@ -1194,10 +1193,6 @@ def status_command(verbose: bool) -> None:
     click.echo("")
 
     try:
-        # Validate embedding configuration before proceeding
-        if not _validate_embeddings_or_exit(config):
-            return
-
         embedder = create_embedder(config)
         database = NexusDatabase(config, embedder)
         database.connect()
@@ -1436,16 +1431,9 @@ def clean_command(project_id: str | None, clean_all: bool, dry_run: bool) -> Non
 
 
 @cli.command("reindex")
-def reindex_command() -> None:
+@requires_config
+def reindex_command(config: NexusConfig) -> None:
     """Re-index entire project (clear and rebuild)."""
-    config_path = Path.cwd() / "nexus_config.json"
-
-    if not config_path.exists():
-        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
-        return
-
-    config = NexusConfig.load(config_path)
-
     # Collect files first to show summary
     click.echo("🔍 Scanning files...")
 
@@ -1480,10 +1468,6 @@ def reindex_command() -> None:
         return
 
     # Proceed with DB operations
-    # Validate embedding configuration before proceeding
-    if not _validate_embeddings_or_exit(config):
-        return
-
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1530,20 +1514,11 @@ def reindex_command() -> None:
 @click.option("--owner", required=True, help="Repository owner")
 @click.option("--limit", default=20, help="Maximum number of issues to import")
 @click.option("--state", default="all", help="Issue state (open, closed, all)")
-def import_github_command(repo: str, owner: str, limit: int, state: str) -> None:
+@requires_config
+def import_github_command(
+    config: NexusConfig, repo: str, owner: str, limit: int, state: str
+) -> None:
     """Import GitHub issues and PRs."""
-    # Load config
-    config_path = Path.cwd() / "nexus_config.json"
-    if not config_path.exists():
-        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
-        return
-
-    config = NexusConfig.load(config_path)
-
-    # Validate embedding configuration before proceeding
-    if not _validate_embeddings_or_exit(config):
-        return
-
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1580,20 +1555,11 @@ def import_github_command(repo: str, owner: str, limit: int, state: str) -> None
 @click.argument("query")
 @click.option("--type", "content_type", help="Content type to filter by")
 @click.option("--limit", default=5, help="Number of results")
-def search_command(query: str, content_type: str | None, limit: int) -> None:
+@requires_config
+def search_command(
+    config: NexusConfig, query: str, content_type: str | None, limit: int
+) -> None:
     """Search the knowledge base."""
-    # Load config
-    config_path = Path.cwd() / "nexus_config.json"
-    if not config_path.exists():
-        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
-        return
-
-    config = NexusConfig.load(config_path)
-
-    # Validate embedding configuration before proceeding
-    if not _validate_embeddings_or_exit(config):
-        return
-
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
@@ -1746,11 +1712,18 @@ def search_command(query: str, content_type: str | None, limit: int) -> None:
 @click.option(
     "--config",
     "-c",
+    "mcp_config_path",
     type=click.Path(exists=True),
     help="Path to MCP config file (default: ~/.config/mcp/config.json)",
 )
 @click.option("--all", "-a", "index_all", is_flag=True, help="Index all configured servers")
-def index_mcp_command(server: str | None, config: str | None, index_all: bool) -> None:
+@requires_config
+def index_mcp_command(
+    config: NexusConfig,
+    server: str | None,
+    mcp_config_path: str | None,
+    index_all: bool,
+) -> None:
     """Index MCP tool documentation into the knowledge base.
 
     This command reads tool schemas from MCP servers and indexes them
@@ -1763,8 +1736,8 @@ def index_mcp_command(server: str | None, config: str | None, index_all: bool) -
     """
     # Load MCP config
     mcp_config_data: dict[str, Any] | MCPConfig
-    if config:
-        config_path = Path(config)
+    if mcp_config_path:
+        config_path = Path(mcp_config_path)
     else:
         # Prioritize local project config
         local_config_path = Path.cwd() / ".nexus" / "mcp_config.json"
@@ -1808,26 +1781,16 @@ def index_mcp_command(server: str | None, config: str | None, index_all: bool) -
         return
 
     # Index each server
-    asyncio.run(_index_mcp_servers(mcp_config_data, servers_to_index))
+    asyncio.run(_index_mcp_servers(mcp_config_data, servers_to_index, config))
 
 
 async def _index_mcp_servers(
-    mcp_config: dict[str, Any] | MCPConfig, server_names: list[str]
+    mcp_config: dict[str, Any] | MCPConfig,
+    server_names: list[str],
+    config: NexusConfig,
 ) -> None:
     """Index tools from specified MCP servers."""
-    # Load config
-    config_path = Path.cwd() / "nexus_config.json"
-    if not config_path.exists():
-        click.echo("❌ nexus_config.json not found. Run 'nexus-init' first.", err=True)
-        return
-
-    config = NexusConfig.load(config_path)
     client = MCPClientManager()
-
-    # Validate embedding configuration before proceeding
-    if not _validate_embeddings_or_exit(config):
-        return
-
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
