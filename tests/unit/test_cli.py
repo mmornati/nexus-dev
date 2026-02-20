@@ -135,6 +135,10 @@ class TestCliStatus:
             mock_db.get_project_stats = mock_get_stats
             mock_db_cls.return_value = mock_db
 
+            # Mock embedder
+            mock_embedder = MagicMock()
+            mock_embedder_fn.return_value = mock_embedder
+
             # Run coroutine explicitly in mock
             def mock_run_async(coro):
                 import asyncio
