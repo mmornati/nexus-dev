@@ -150,6 +150,7 @@ class MCPConfig:
             Merged MCPConfig, or None if neither exists.
         """
         import logging
+
         logger = logging.getLogger(__name__)
 
         global_dict: dict[str, Any] | None = None

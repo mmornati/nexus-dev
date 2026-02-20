@@ -196,9 +196,12 @@ def test_index_file_ignores_strings_and_comments(builder, mock_graph, tmp_path):
     # Verify ONLY realFunction was indexed
     # Check that query calls do NOT contain the fake names
     fake_names = [
-        "commentedOut", "multiLineComment",
-        "inDoubleQuote", "inSingleQuote", "inBacktick",
-        "FakeClass"
+        "commentedOut",
+        "multiLineComment",
+        "inDoubleQuote",
+        "inSingleQuote",
+        "inBacktick",
+        "FakeClass",
     ]
 
     # Collect all 'name' parameters passed to queries

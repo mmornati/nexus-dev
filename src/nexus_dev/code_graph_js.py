@@ -115,7 +115,7 @@ class JSGraphBuilder:
         else:
             pattern = re.compile(comment_pattern, re.VERBOSE)
 
-        def replacer(match):
+        def replacer(match: re.Match[str]) -> str:
             # Replace non-newline characters with space to preserve line numbers
             return "".join("\n" if c == "\n" else " " for c in match.group(0))
 
