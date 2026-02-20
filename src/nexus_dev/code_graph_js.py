@@ -49,6 +49,9 @@ class JSGraphBuilder:
         # Create file node
         self._add_file(rel_path, language)
 
+        # Mask comments for imports (but keep strings as they contain module paths)
+        masked_for_imports = self._mask_content(content, mask_strings=False)
+
         # Extract imports
         # import X from 'module'
         # import { X } from 'module'
@@ -60,10 +63,13 @@ class JSGraphBuilder:
         ]
 
         for pattern in import_patterns:
-            for match in re.finditer(pattern, content):
+            for match in re.finditer(pattern, masked_for_imports):
                 module_name = match.group(1)
                 self._add_import(rel_path, module_name)
                 stats["imports"] += 1
+
+        # Mask both comments and strings for functions/classes
+        masked_content = self._mask_content(content, mask_strings=True)
 
         # Extract functions
         # function name() {}
@@ -76,20 +82,44 @@ class JSGraphBuilder:
         ]
 
         for pattern in func_patterns:
-            for match in re.finditer(pattern, content):
+            for match in re.finditer(pattern, masked_content):
                 func_name = match.group(1)
                 self._add_function(rel_path, func_name, match.start())
                 stats["functions"] += 1
 
         # Extract classes
         class_pattern = r"class\s+([A-Z][a-zA-Z0-9]*)(?:\s+extends\s+([A-Z][a-zA-Z0-9]*))?\s*\{"
-        for match in re.finditer(class_pattern, content):
+        for match in re.finditer(class_pattern, masked_content):
             class_name = match.group(1)
             parent_name = match.group(2)
             self._add_class(rel_path, class_name, parent_name)
             stats["classes"] += 1
 
         return stats
+
+    def _mask_content(self, content: str, mask_strings: bool = True) -> str:
+        """Mask strings and/or comments with spaces to prevent false positive matches."""
+        # Pattern components
+        string_pattern = (
+            r'"(?:\\.|[^"\\])*"|'  # Double quotes
+            r"'(?:\\.|[^'\\])*'|"  # Single quotes
+            r"`(?:\\.|[^`\\])*`"  # Backticks
+        )
+        comment_pattern = (
+            r"//[^\n]*|"  # Single line comment
+            r"/\*[\s\S]*?\*/"  # Multi-line comment
+        )
+
+        if mask_strings:
+            pattern = re.compile(f"{string_pattern}|{comment_pattern}", re.VERBOSE)
+        else:
+            pattern = re.compile(comment_pattern, re.VERBOSE)
+
+        def replacer(match):
+            # Replace non-newline characters with space to preserve line numbers
+            return "".join("\n" if c == "\n" else " " for c in match.group(0))
+
+        return pattern.sub(replacer, content)
 
     def _add_file(self, file_path: str, language: str) -> None:
         """Add file node to graph."""
