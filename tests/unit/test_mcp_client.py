@@ -410,9 +410,7 @@ class TestMCPClientManager:
             manager = MCPClientManager()
             server = MCPServerConnection(name="test", command="python", args=[])
 
-            result = await manager.call_tool(
-                server, "test_tool", arguments={"arg": "value"}
-            )
+            result = await manager.call_tool(server, "test_tool", arguments={"arg": "value"})
 
             assert result == mock_result
             mock_session.call_tool.assert_awaited_once_with("test_tool", {"arg": "value"})
