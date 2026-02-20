@@ -86,3 +86,5 @@ Thumbs.db
 
 # MkDocs
 site/
+
+.nexus/lessons/*.md
