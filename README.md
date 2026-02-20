@@ -255,89 +255,8 @@ If the server starts in a generic location (like a global Docker container or de
 
 ### Supported Embedding Providers
 
-Nexus-Dev supports multiple embedding providers. Choose the one that best fits your needs.
-
-#### 1. OpenAI (Default)
-- **Best for:** General purpose, ease of use.
-- **Provider:** `openai`
-- **Default Model:** `text-embedding-3-small`
-- **Configuration:**
-  ```json
-  {
-    "embedding_provider": "openai",
-    "embedding_model": "text-embedding-3-small"
-  }
-  ```
-- **Environment:** Set `OPENAI_API_KEY`.
-
-#### 2. Local Ollama (Privacy / Offline)
-- **Best for:** Privacy, local execution, cost savings.
-- **Provider:** `ollama`
-- **Default Model:** `nomic-embed-text`
-- **Configuration:**
-  ```json
-  {
-    "embedding_provider": "ollama",
-    "embedding_model": "nomic-embed-text",
-    "ollama_url": "http://localhost:11434"
-  }
-  ```
-
-#### 3. Google Vertex AI (Enterprise)
-- **Best for:** Enterprise GCP users, high scalability.
-- **Provider:** `google`
-- **Install:** `pip install nexus-dev[google]`
-- **Default Model:** `text-embedding-004`
-- **Configuration:**
-  ```json
-  {
-    "embedding_provider": "google",
-    "google_project_id": "your-project-id",
-    "google_location": "us-central1"
-  }
-  ```
-- **Environment:** Uses standard Google Cloud credentials (ADC).
-
-#### 4. AWS Bedrock (Enterprise)
-- **Best for:** Enterprise AWS users.
-- **Provider:** `aws`
-- **Install:** `pip install nexus-dev[aws]`
-- **Default Model:** `amazon.titan-embed-text-v1`
-- **Configuration:**
-  ```json
-  {
-    "embedding_provider": "aws",
-    "aws_region": "us-east-1"
-  }
-  ```
-
-#### 5. Voyage AI (High Performance)
-- **Best for:** State-of-the-art retrieval quality (RAG specialist).
-- **Provider:** `voyage`
-- **Install:** `pip install nexus-dev[voyage]`
-- **Default Model:** `voyage-large-2`
-- **Configuration:**
-  ```json
-  {
-    "embedding_provider": "voyage",
-    "voyage_api_key": "your-key"
-  }
-  ```
-
-#### 6. Cohere (Multilingual)
-- **Best for:** Multilingual search and reranking.
-- **Provider:** `cohere`
-- **Install:** `pip install nexus-dev[cohere]`
-- **Default Model:** `embed-multilingual-v3.0`
-- **Configuration:**
-  ```json
-  {
-    "embedding_provider": "cohere",
-    "cohere_api_key": "your-key"
-  }
-  ```
-
-> ⚠️ **Warning**: Embeddings are NOT portable between providers. Changing providers requires re-indexing all documents.
+Nexus-Dev supports multiple embedding providers (OpenAI, Ollama, Vertex AI, AWS Bedrock, Voyage AI, Cohere). 
+For detailed information and configuration settings for each, see [Supported Embedding Providers](docs/embedding-providers.md).
 
 ## Optional: Pre-commit Hook
 
@@ -418,199 +337,31 @@ This adds slash commands: `/start-session`, `/search-first`, `/record-lesson`, `
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Agent["🤖 AI Agent"]
-        direction TB
-        Cursor["Cursor / Copilot / Windsurf"]
-    end
-
-    subgraph MCP["📡 Nexus-Dev (Gateway)"]
-        direction TB
-        
-        subgraph Tools["MCP Tools"]
-            direction TB
-            search_knowledge["search_knowledge"]
-            search_code["search_code"]
-            search_docs["search_docs"]
-            index_file["index_file"]
-            gateway_tools["gateway_tools (new)"]
-        end
-        
-        subgraph Chunkers["🔧 RAG Pipeline"]
-            Python["Chunkers"]
-            Embeddings["Embeddings"]
-            DB["LanceDB"]
-        end
-    end
-
-    subgraph External["🌍 External MCP Servers"]
-        GH["GitHub"]
-        PG["PostgreSQL"]
-        Other["..."]
-    end
-
-    Agent -->|"stdio"| Tools
-    Tools --> Chunkers
-    gateway_tools -.->|"invoke_tool"| External
-```
-
-### Data Flow
-
-```mermaid
-sequenceDiagram
-    participant AI as AI Agent
-    participant MCP as Nexus-Dev
-    participant Embed as Embeddings
-    participant DB as LanceDB
-
-    Note over AI,DB: Indexing Flow
-    AI->>MCP: index_file(path)
-    MCP->>MCP: Parse with Chunker
-    MCP->>Embed: Generate embeddings
-    Embed-->>MCP: Vectors
-    MCP->>DB: Store chunks + vectors
-    DB-->>MCP: OK
-    MCP-->>AI: ✅ Indexed
-
-    Note over AI,DB: Search Flow
-    AI->>MCP: search_knowledge(query)
-    MCP->>Embed: Embed query
-    Embed-->>MCP: Query vector
-    MCP->>DB: Vector similarity search
-    DB-->>MCP: Results
-    MCP-->>AI: Formatted results
-```
+For a detailed overview of the Nexus-Dev component architecture and data flow, please refer to the [Architecture Documentation](docs/architecture.md).
 
 ## Development Setup
 
 Since Nexus-Dev is not yet published to PyPI/Docker Hub, developers must build from source.
 
-### Option 1: Local Python Installation (Recommended for Development)
+Detailed development setup instructions are available in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Quick Development Start
+
+The easiest way to get started is by using our robust `Makefile`:
 
 ```bash
 # Clone repository
 git clone https://github.com/mmornati/nexus-dev.git
 cd nexus-dev
 
-# Option A: Use the Makefile (handles pyenv + venv)
+# Setup full development environment (pyenv + venv + deps)
 make setup
-source .venv/bin/activate
 
-# Option B: Manual setup
-pyenv install 3.13       # or use your preferred Python 3.13+ manager
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"  # Editable install with dev dependencies
+# Run tests
+make test
 ```
 
-After installation, CLI commands are available:
-
-```bash
-nexus-init --help        # Initialize a project
-nexus-index --help       # Index files
-nexus-dev                # Run MCP server
-```
-
-### Option 2: Docker Build
-
-```bash
-# Build the image
-make docker-build
-# or: docker build -t nexus-dev:latest .
-
-# Run with volume mounts
-docker run -it --rm \
-    -v /path/to/your-project:/workspace:ro \
-    -v nexus-dev-data:/data/nexus-dev \
-    -e OPENAI_API_KEY=$OPENAI_API_KEY \
-    nexus-dev:latest
-
-# Or use Makefile shortcuts
-make docker-run          # Run container
-make docker-logs         # View logs
-make docker-stop         # Stop container
-```
-
-### Makefile Commands
-
-| Command | Description |
-|---------|-------------|
-| `make setup` | Full dev environment setup (pyenv + venv + deps) |
-| `make install-dev` | Install package with dev dependencies |
-| `make lint` | Run ruff linter |
-| `make format` | Format code + auto-fix lint issues |
-| `make check` | Run all CI checks (lint + format + type-check) |
-| `make test` | Run tests |
-| `make test-cov` | Run tests with coverage report |
-| `make docker-build` | Build Docker image |
-| `make docker-run` | Run Docker container |
-| `make help` | Show all available commands |
-
-### MCP Configuration (Development Mode)
-
-Configure your AI agent to use the locally-built server. **This single configuration works for ALL your indexed projects!**
-
-**For Claude Desktop / Cursor / Windsurf:**
-
-```json
-{
-  "mcpServers": {
-    "nexus-dev": {
-      "command": "/path/to/nexus-dev/.venv/bin/python",
-      "args": ["-m", "nexus_dev.server"],
-      "env": {
-        "OPENAI_API_KEY": "sk-..."
-      }
-    }
-  }
-}
-```
-
-> **How it works**: The server now defaults to searching **all indexed projects** when no specific project context is active. You don't need to configure `cwd` or create separate MCP entries for each project.
-
-> **Tip**: If `OPENAI_API_KEY` is already in your shell profile (`.zshrc`, `.bashrc`), some clients inherit it automatically. Check your client's documentation.
-
-**Using Docker:**
-
-The `/workspace` mount is the server's working directory. It looks for `nexus_config.json` and `.nexus/lessons/` there. Mount your project (or parent directory) to `/workspace`:
-
-```json
-{
-  "mcpServers": {
-    "nexus-dev": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-v", "/path/to/project:/workspace:ro",
-        "-v", "nexus-dev-data:/data/nexus-dev",
-        "-e", "OPENAI_API_KEY",
-        "nexus-dev:latest"
-      ]
-    }
-  }
-}
-```
-
-**Multi-Project Setup:**
-
-For multiple projects, you have two options:
-
-1. **Mount parent directory** containing all projects:
-   ```json
-   "-v", "/Users/you/Projects:/workspace:ro"
-   ```
-   Then index paths like `/workspace/project-a/src/`, `/workspace/project-b/src/`. Each project needs its own `nexus_config.json` with a unique `project_id`.
-
-2. **Use local Python install** (recommended): MCP clients automatically set the working directory to the project root, so no path configuration is needed.
-
-### Running Tests
-
-```bash
-make test              # Run all tests
-make test-cov          # Run with coverage report
-pytest tests/unit/ -v  # Run specific test directory
-```
+For docker testing and multi-project development, please read the detailed setup guide in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Adding Language Support
 

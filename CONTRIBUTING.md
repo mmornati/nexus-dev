@@ -116,25 +116,100 @@ Common node types by language:
 | Go | `function_declaration` | `type_declaration` | `method_declaration` |
 | Rust | `function_item` | `struct_item`, `impl_item` | `function_item` (in impl) |
 
-## Code Style
+## Development Setup
 
-- Format with `ruff format`
-- Lint with `ruff check`
-- Type check with `mypy`
+Since Nexus-Dev is not yet published to PyPI/Docker Hub, developers must build from source.
+
+### Setup using Makefile (Recommended)
 
 ```bash
-# Run all checks
-ruff format src/ tests/
-ruff check src/ tests/
-mypy src/
+# Clone repository
+git clone https://github.com/mmornati/nexus-dev.git
+cd nexus-dev
+
+# Setup full development environment (pyenv + venv + deps)
+make setup
+
+# Activate the virtual environment
+source .venv/bin/activate
 ```
+
+### Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Full dev environment setup (pyenv + venv + deps) |
+| `make install-dev` | Install package with dev dependencies |
+| `make lint` | Run ruff linter |
+| `make format` | Format code + auto-fix lint issues |
+| `make check` | Run all CI checks (lint + format + type-check) |
+| `make test` | Run tests |
+| `make test-cov` | Run tests with coverage report |
+| `make docker-build` | Build Docker image |
+| `make docker-run` | Run Docker container |
+| `make docker-test` | Run tests inside Docker container |
+| `make help` | Show all available commands |
+
+### MCP Configuration (Development Mode)
+
+Configure your AI agent to use the locally-built server. **This single configuration works for ALL your indexed projects!**
+
+**For Claude Desktop / Cursor / Windsurf:**
+
+```json
+{
+  "mcpServers": {
+    "nexus-dev": {
+      "command": "/path/to/nexus-dev/.venv/bin/python",
+      "args": ["-m", "nexus_dev.server"],
+      "env": {
+        "OPENAI_API_KEY": "sk-..."
+      }
+    }
+  }
+}
+```
+
+> **How it works**: The server now defaults to searching **all indexed projects** when no specific project context is active. You don't need to configure `cwd` or create separate MCP entries for each project.
+
+**Using Docker:**
+
+The `/workspace` mount is the server's working directory. It looks for `nexus_config.json` and `.nexus/lessons/` there. Mount your project (or parent directory) to `/workspace`:
+
+```json
+{
+  "mcpServers": {
+    "nexus-dev": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/path/to/project:/workspace:ro",
+        "-v", "nexus-dev-data:/data/nexus-dev",
+        "-e", "OPENAI_API_KEY",
+        "nexus-dev:latest"
+      ]
+    }
+  }
+}
+```
+
+## Adding New Features
+
+If you are adding new features, such as new **Embedding Providers** or **Gateway MCP Tools**, make sure your PR includes:
+1. Necessary tests and documentation updates.
+2. Changes to `README.md` and related advanced docs (e.g., `docs/embedding-providers.md`).
+
+## Code Style
+
+- Format your code with `make format`
+- Verify everything passes the linter and type checker with `make check`
 
 ## Pull Request Process
 
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new functionality
-4. Ensure all tests pass
+4. Ensure all tests and hooks pass (`make check` and `make test`, optionally `make docker-test`)
 5. Submit a pull request
 
 Thank you for contributing! 🎉
