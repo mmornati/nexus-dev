@@ -138,9 +138,7 @@ class PythonGraphBuilder:
                     break
 
             module_name_node = node.child_by_field_name("module_name")
-            name_part = (
-                module_name_node.text.decode("utf-8") if module_name_node else ""
-            )
+            name_part = module_name_node.text.decode("utf-8") if module_name_node else ""
 
             module_name = dots + name_part
 
@@ -158,9 +156,7 @@ class PythonGraphBuilder:
                 if child.type == "dotted_name" and child != module_name_node:
                     # from x import y
                     name = child.text.decode("utf-8")
-                    self._add_import_ref(
-                        rel_path, module_name, stats, imported_symbols, name
-                    )
+                    self._add_import_ref(rel_path, module_name, stats, imported_symbols, name)
                 elif child.type == "aliased_import":
                     # from x import y as z
                     dotted_name = child.child_by_field_name("name")
@@ -236,10 +232,10 @@ class PythonGraphBuilder:
                 break
 
         if not colon_found:
-             # Fallback: finding block
-             body = node.child_by_field_name("body")
-             if body:
-                 sig_end = body.start_byte
+            # Fallback: finding block
+            body = node.child_by_field_name("body")
+            if body:
+                sig_end = body.start_byte
 
         signature = content_bytes[node.start_byte : sig_end].decode("utf-8").strip()
 
