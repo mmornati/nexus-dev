@@ -144,7 +144,7 @@ class TestCliStatus:
         with runner.isolated_filesystem(temp_dir=tmp_path):
             result = runner.invoke(cli, ["status"])
 
-            assert "not initialized" in result.output
+            assert "nexus_config.json not found" in result.output
 
 
 class TestCliIndex:
@@ -299,16 +299,36 @@ class TestCliVersion:
 class TestCliIndexMCP:
     """Test suite for nexus-index-mcp command."""
 
-    def test_index_mcp_no_mcp_config(self, runner, tmp_path):
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    def test_index_mcp_no_mcp_config(
+        self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
+    ):
         """Test index-mcp fails when MCP config is not found."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
             result = runner.invoke(cli, ["index-mcp", "--all"])
 
             assert "MCP config not found" in result.output
 
-    def test_index_mcp_missing_options(self, runner, tmp_path):
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    def test_index_mcp_missing_options(
+        self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
+    ):
         """Test index-mcp fails when neither --server nor --all is specified."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
             # Create MCP config
             mcp_config_dir = Path.home() / ".config" / "mcp"
             mcp_config_dir.mkdir(parents=True, exist_ok=True)
@@ -322,9 +342,19 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    def test_index_mcp_invalid_json(self, runner, tmp_path):
+    @patch("nexus_dev.cli.create_embedder")
+    @patch("nexus_dev.cli.NexusDatabase")
+    @patch("nexus_dev.cli.NexusConfig")
+    def test_index_mcp_invalid_json(
+        self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
+    ):
         """Test index-mcp fails gracefully with invalid JSON in config."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
+            (Path.cwd() / "nexus_config.json").write_text("{}")
+            mock_config = MagicMock()
+            mock_config.project_id = "test"
+            mock_config_cls.load.return_value = mock_config
+
             # Create invalid MCP config
             mcp_config_dir = Path.home() / ".config" / "mcp"
             mcp_config_dir.mkdir(parents=True, exist_ok=True)

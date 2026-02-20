@@ -307,6 +307,7 @@ async def test_hybrid_db_disabled(test_config: NexusConfig, monkeypatch) -> None
     # Ensure hybrid DB is disabled
     test_config.enable_hybrid_db = False
     monkeypatch.setattr(server, "_hybrid_db", None)
+    monkeypatch.setattr(server, "_get_config", lambda: test_config)
 
     result = await server.search_dependencies("test.py")
 
