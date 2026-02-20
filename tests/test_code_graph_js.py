@@ -218,3 +218,42 @@ def test_index_file_ignores_strings_and_comments(builder, mock_graph, tmp_path):
 
     assert "realFunction" in captured_names
     assert "RealClass" in captured_names
+
+
+def test_imports_with_comment_like_strings(builder, mock_graph, tmp_path):
+    """Test that imports are found even if strings contain comment characters."""
+    content = """
+    const url = "http://example.com";
+    import A from 'module-a';
+
+    const regex = "/*";
+    import B from 'module-b';
+
+    const mixed = ' // comment start ';
+    import C from 'module-c';
+    """
+
+    test_file = tmp_path / "imports_edge_case.js"
+    test_file.write_text(content, encoding="utf-8")
+
+    stats = builder.index_file(test_file)
+
+    assert stats["imports"] == 3
+
+    # Verify module names
+    captured_modules = []
+    # Imports use _add_import which calls query twice. One for file node, one for relationship.
+    # The file node query has 'path' parameter which is module path (or node_modules/name)
+
+    for call_obj in mock_graph.query.call_args_list:
+        args, _ = call_obj
+        if len(args) > 1:
+            params = args[1]
+            if params and "path" in params:
+                path = params["path"]
+                if "node_modules/" in path:
+                    captured_modules.append(path.replace("node_modules/", ""))
+
+    assert "module-a" in captured_modules
+    assert "module-b" in captured_modules
+    assert "module-c" in captured_modules

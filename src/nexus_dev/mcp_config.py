@@ -66,11 +66,6 @@ class MCPConfig:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
-        return cls._from_dict(data)
-
-    @classmethod
-    def _from_dict(cls, data: dict[str, Any]) -> MCPConfig:
-        """Create MCPConfig from a validated dictionary."""
         cls.validate(data)
 
         servers = {
@@ -86,7 +81,7 @@ class MCPConfig:
                 connect_timeout=cfg.get("connect_timeout", 10.0),
                 max_concurrent=cfg.get("max_concurrent"),
             )
-            for name, cfg in data.get("servers", {}).items()
+            for name, cfg in data["servers"].items()
         }
 
         profiles = data.get("profiles", {})
@@ -100,7 +95,7 @@ class MCPConfig:
         )
 
         return cls(
-            version=data.get("version", "1.0"),
+            version=data["version"],
             servers=servers,
             profiles=profiles,
             active_profile=active_profile,
@@ -149,74 +144,28 @@ class MCPConfig:
         Returns:
             Merged MCPConfig, or None if neither exists.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        global_dict: dict[str, Any] | None = None
-        local_dict: dict[str, Any] | None = None
+        global_config: MCPConfig | None = None
+        local_config: MCPConfig | None = None
 
         if global_path and global_path.exists():
             try:
-                with open(global_path, encoding="utf-8") as f:
-                    global_dict = json.load(f)
-            except Exception as e:
-                logger.warning("Failed to load global MCP config from %s: %s", global_path, e)
+                global_config = cls.load(global_path)
+            except Exception:
+                # In a real CLI context we might want to warn, but here we proceed
+                pass
 
         if local_path and local_path.exists():
             try:
-                with open(local_path, encoding="utf-8") as f:
-                    local_dict = json.load(f)
-            except Exception as e:
-                logger.warning("Failed to load local MCP config from %s: %s", local_path, e)
+                local_config = cls.load(local_path)
+            except Exception:
+                pass
 
-        if not global_dict and not local_dict:
-            return None
-
-        # Merge dictionaries explicitly, prefer local options
-        if global_dict and local_dict:
-            merged = global_dict.copy()
-
-            # Merge servers
-            merged_servers = merged.get("servers", {}).copy()
-            merged_servers.update(local_dict.get("servers", {}))
-            merged["servers"] = merged_servers
-
-            # Merge profiles (combine lists using distinct order-preserving insertion)
-            merged_profiles = merged.get("profiles", {}).copy()
-            for profile, servers in local_dict.get("profiles", {}).items():
-                existing = merged_profiles.get(profile, [])
-                # Add local servers to global servers avoiding duplicates
-                merged_profiles[profile] = existing + [s for s in servers if s not in existing]
-            merged["profiles"] = merged_profiles
-
-            # Gateway settings
-            merged_gateway = merged.get("gateway", {}).copy()
-            merged_gateway.update(local_dict.get("gateway", {}))
-            merged["gateway"] = merged_gateway
-
-            # Apply local active profile if specified
-            if "active_profile" in local_dict:
-                merged["active_profile"] = local_dict["active_profile"]
-
-            try:
-                return cls._from_dict(merged)
-            except Exception as e:
-                logger.warning("Failed to parse merged MCP config: %s", e)
-                return None
-
-        elif global_dict:
-            try:
-                return cls._from_dict(global_dict)
-            except Exception as e:
-                logger.warning("Failed to parse global MCP config: %s", e)
-                return None
-        elif local_dict:
-            try:
-                return cls._from_dict(local_dict)
-            except Exception as e:
-                logger.warning("Failed to parse local MCP config: %s", e)
-                return None
+        if global_config and local_config:
+            return global_config.merge(local_config)
+        elif global_config:
+            return global_config
+        elif local_config:
+            return local_config
 
         return None
 
