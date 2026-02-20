@@ -154,7 +154,9 @@ class TestDatabaseSecurity:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_delete_by_project_escapes_project_id(self, mock_lancedb, mock_config, mock_embedder):
+    async def test_delete_by_project_escapes_project_id(
+        self, mock_lancedb, mock_config, mock_embedder
+    ):
         """Test that delete_by_project escapes project_id."""
         mock_search = MagicMock()
         mock_search.where.return_value = mock_search
@@ -184,7 +186,9 @@ class TestDatabaseSecurity:
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
-    async def test_get_recent_lessons_escapes_project_id(self, mock_lancedb, mock_config, mock_embedder):
+    async def test_get_recent_lessons_escapes_project_id(
+        self, mock_lancedb, mock_config, mock_embedder
+    ):
         """Test that get_recent_lessons escapes project_id."""
         mock_search = MagicMock()
         mock_search.where.return_value = mock_search

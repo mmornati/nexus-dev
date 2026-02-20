@@ -414,7 +414,9 @@ class NexusDatabase:
 
         # Delete documents
         try:
-            table.delete(f"file_path = '{escaped_file_path}' AND project_id = '{escaped_project_id}'")
+            table.delete(
+                f"file_path = '{escaped_file_path}' AND project_id = '{escaped_project_id}'"
+            )
         except Exception:
             pass
 
