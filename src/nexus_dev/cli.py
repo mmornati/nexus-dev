@@ -500,41 +500,8 @@ def _install_hook(git_dir_parent: Path, project_root: Path | None = None) -> Non
     if template_path.exists():
         shutil.copy(template_path, hook_path)
     else:
-        # Write inline
-        hook_content = """#!/bin/bash
-# Nexus-Dev Pre-commit Hook
-
-set -e
-
-echo "🧠 Nexus-Dev: Checking for files to index..."
-
-MODIFIED_FILES=$(git diff --cached --name-only --diff-filter=ACM | \
-  grep -E '\\.(py|js|jsx|ts|tsx|java)$' || true)
-
-if [ -n "$MODIFIED_FILES" ]; then
-    echo "📁 Indexing modified code files..."
-    for file in $MODIFIED_FILES; do
-        if [ -f "$file" ]; then
-            python -m nexus_dev.cli index "$file" --quiet 2>/dev/null || true
-        fi
-    done
-fi
-
-LESSON_FILES=$(git diff --cached --name-only --diff-filter=A | \
-  grep -E '^\\.nexus/lessons/.*\\.md$' || true)
-
-if [ -n "$LESSON_FILES" ]; then
-    echo "📚 Indexing new lessons..."
-    for file in $LESSON_FILES; do
-        if [ -f "$file" ]; then
-            python -m nexus_dev.cli index-lesson "$file" --quiet 2>/dev/null || true
-        fi
-    done
-fi
-
-echo "✅ Nexus-Dev indexing complete"
-"""
-        hook_path.write_text(hook_content)
+        click.echo("❌ Pre-commit hook template not found. Hook installation failed.", err=True)
+        return
 
     # Make executable
     current_mode = hook_path.stat().st_mode
