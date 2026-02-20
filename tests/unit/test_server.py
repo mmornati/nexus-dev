@@ -54,17 +54,12 @@ class TestSearchKnowledge:
     """Test suite for search_knowledge tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_returns_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_returns_results(self, mock_get_db):
         """Test search_knowledge returns formatted results."""
-        from nexus_dev.server import search_knowledge
+        from nexus_dev.tools.search import search_knowledge
 
         # Setup mocks
-        mock_config = MagicMock()
-        mock_config.project_id = "test-project"
-        mock_get_config.return_value = mock_config
-
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
             return_value=[make_search_result(name="my_function", text="def my_function(): pass")]
@@ -78,15 +73,10 @@ class TestSearchKnowledge:
         mock_db.search.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_no_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_no_results(self, mock_get_db):
         """Test search_knowledge with no results."""
-        from nexus_dev.server import search_knowledge
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_knowledge
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -97,15 +87,10 @@ class TestSearchKnowledge:
         assert "No results found" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_with_content_type_filter(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_with_content_type_filter(self, mock_get_db):
         """Test search with content_type filter."""
-        from nexus_dev.server import search_knowledge
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_knowledge
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[make_search_result(doc_type="code")])
@@ -119,15 +104,10 @@ class TestSearchKnowledge:
         assert "[CODE]" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_clamps_limit(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_clamps_limit(self, mock_get_db):
         """Test that limit is clamped to 1-20."""
-        from nexus_dev.server import search_knowledge
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_knowledge
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -142,15 +122,10 @@ class TestSearchKnowledge:
         assert mock_db.search.call_args.kwargs["limit"] == 1
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_handles_exception(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_handles_exception(self, mock_get_db):
         """Test search handles database exceptions."""
-        from nexus_dev.server import search_knowledge
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_knowledge
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(side_effect=Exception("DB error"))
@@ -166,15 +141,10 @@ class TestSearchCode:
     """Test suite for search_code tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_code_returns_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_code_returns_results(self, mock_get_db):
         """Test search_code returns formatted code results."""
-        from nexus_dev.server import search_code
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_code
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -191,15 +161,10 @@ class TestSearchCode:
         assert call_args.kwargs["doc_type"] == DocumentType.CODE
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_code_no_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_code_no_results(self, mock_get_db):
         """Test search_code with no results."""
-        from nexus_dev.server import search_code
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_code
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -214,15 +179,10 @@ class TestSearchDocs:
     """Test suite for search_docs tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_docs_returns_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_docs_returns_results(self, mock_get_db):
         """Test search_docs returns formatted documentation results."""
-        from nexus_dev.server import search_docs
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_docs
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -242,15 +202,10 @@ class TestSearchDocs:
         assert "Documentation Search" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_docs_no_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_docs_no_results(self, mock_get_db):
         """Test search_docs with no results."""
-        from nexus_dev.server import search_docs
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_docs
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -265,15 +220,10 @@ class TestSearchLessons:
     """Test suite for search_lessons tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_lessons_returns_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_lessons_returns_results(self, mock_get_db):
         """Test search_lessons returns formatted lesson results."""
-        from nexus_dev.server import search_lessons
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_lessons
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -293,15 +243,10 @@ class TestSearchLessons:
         assert "lesson_001" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
-    async def test_search_lessons_no_results(self, mock_get_config, mock_get_db):
+    @patch("nexus_dev.tools.search.get_database")
+    async def test_search_lessons_no_results(self, mock_get_db):
         """Test search_lessons with no results shows tip."""
-        from nexus_dev.server import search_lessons
-
-        mock_config = MagicMock()
-        mock_config.project_id = "test"
-        mock_get_config.return_value = mock_config
+        from nexus_dev.tools.search import search_lessons
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -317,12 +262,12 @@ class TestRecordLesson:
     """Test suite for record_lesson tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_embedder")
-    @patch("nexus_dev.server._get_config")
+    @patch("nexus_dev.tools.knowledge.get_database")
+    @patch("nexus_dev.tools.knowledge.get_embedder")
+    @patch("nexus_dev.tools.knowledge.get_config")
     async def test_record_lesson_success(self, mock_get_config, mock_get_embedder, mock_get_db):
         """Test recording a lesson successfully."""
-        from nexus_dev.server import record_lesson
+        from nexus_dev.tools.knowledge import record_lesson
 
         mock_config = MagicMock()
         mock_config.project_id = "test"
@@ -342,14 +287,14 @@ class TestRecordLesson:
         mock_db.upsert_document.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_embedder")
-    @patch("nexus_dev.server._get_config")
+    @patch("nexus_dev.tools.knowledge.get_database")
+    @patch("nexus_dev.tools.knowledge.get_embedder")
+    @patch("nexus_dev.tools.knowledge.get_config")
     async def test_record_lesson_with_context(
         self, mock_get_config, mock_get_embedder, mock_get_db
     ):
         """Test recording a lesson with context."""
-        from nexus_dev.server import record_lesson
+        from nexus_dev.tools.knowledge import record_lesson
 
         mock_config = MagicMock()
         mock_config.project_id = "test"
@@ -378,15 +323,15 @@ class TestIndexFile:
     """Test suite for index_file tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_embedder")
-    @patch("nexus_dev.server._get_config")
-    @patch("nexus_dev.server.ChunkerRegistry")
+    @patch("nexus_dev.tools.knowledge.get_database")
+    @patch("nexus_dev.tools.knowledge.get_embedder")
+    @patch("nexus_dev.tools.knowledge.get_config")
+    @patch("nexus_dev.tools.knowledge.ChunkerRegistry")
     async def test_index_file_with_content(
         self, mock_registry, mock_get_config, mock_get_embedder, mock_get_db
     ):
         """Test indexing a file with provided content."""
-        from nexus_dev.server import index_file
+        from nexus_dev.tools.knowledge import index_file
 
         mock_config = MagicMock()
         mock_config.project_id = "test"
@@ -419,10 +364,10 @@ class TestIndexFile:
         assert "test.py" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_config")
+    @patch("nexus_dev.tools.knowledge.get_config")
     async def test_index_file_not_found(self, mock_get_config):
         """Test indexing a file that doesn't exist."""
-        from nexus_dev.server import index_file
+        from nexus_dev.tools.knowledge import index_file
 
         mock_config = MagicMock()
         mock_config.project_id = "test"
@@ -438,11 +383,11 @@ class TestGetProjectContext:
     """Test suite for get_project_context tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
+    @patch("nexus_dev.tools.knowledge.get_database")
+    @patch("nexus_dev.tools.knowledge.get_config")
     async def test_get_project_context(self, mock_get_config, mock_get_db):
         """Test getting project context with stats and lessons."""
-        from nexus_dev.server import get_project_context
+        from nexus_dev.tools.knowledge import get_project_context
 
         mock_config = MagicMock()
         mock_config.project_id = "test"
@@ -472,25 +417,25 @@ class TestGetProjectContext:
 
 
 class TestHelperFunctions:
-    """Test suite for helper functions."""
+    """Test suite for app_state helper functions."""
 
-    @patch("nexus_dev.server._config", None)
-    @patch("nexus_dev.server.NexusConfig")
-    @patch("nexus_dev.server.Path")
-    @patch("nexus_dev.server._find_project_root")
+    @patch("nexus_dev.app_state._config", None)
+    @patch("nexus_dev.app_state.NexusConfig")
+    @patch("nexus_dev.app_state.Path")
+    @patch("nexus_dev.app_state.find_project_root")
     def test_get_config_loads_from_file(self, mock_find_root, mock_path, mock_nexus_config):
-        """Test _get_config loads config when file exists."""
+        """Test get_config loads config when file exists."""
         # Reset global state
-        import nexus_dev.server as server
-        from nexus_dev.server import _get_config
+        import nexus_dev.app_state as app_state
+        from nexus_dev.app_state import get_config
 
-        server._config = None
+        app_state._config = None
 
-        # Setup _find_project_root to return a mock path
+        # Setup find_project_root to return a mock path
         mock_root = MagicMock()
         mock_find_root.return_value = mock_root
 
-        # When _get_config calls root / "nexus_config.json" -> config_path
+        # When get_config calls root / "nexus_config.json" -> config_path
         mock_config_path = MagicMock()
         mock_root.__truediv__.return_value = mock_config_path
         mock_config_path.exists.return_value = True
@@ -500,21 +445,21 @@ class TestHelperFunctions:
         mock_config_instance.project_id = "test-project"
         mock_nexus_config.load.return_value = mock_config_instance
 
-        config = _get_config()
+        config = get_config()
 
         assert config is not None
         assert config.project_id is not None
         mock_nexus_config.load.assert_called_once()
 
-    @patch("nexus_dev.server._embedder", None)
-    @patch("nexus_dev.server._get_config")
-    @patch("nexus_dev.server.create_embedder")
+    @patch("nexus_dev.app_state._embedder", None)
+    @patch("nexus_dev.app_state.get_config")
+    @patch("nexus_dev.app_state.create_embedder")
     def test_get_embedder_creates_once(self, mock_create, mock_get_config):
-        """Test _get_embedder creates embedder only once."""
-        import nexus_dev.server as server
-        from nexus_dev.server import _get_embedder
+        """Test get_embedder creates embedder only once."""
+        import nexus_dev.app_state as app_state
+        from nexus_dev.app_state import get_embedder
 
-        server._embedder = None
+        app_state._embedder = None
 
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
@@ -522,8 +467,8 @@ class TestHelperFunctions:
         mock_embedder = MagicMock()
         mock_create.return_value = mock_embedder
 
-        embedder1 = _get_embedder()
-        embedder2 = _get_embedder()
+        embedder1 = get_embedder()
+        embedder2 = get_embedder()
 
         assert embedder1 is embedder2
         mock_create.assert_called_once()
@@ -533,10 +478,10 @@ class TestSearchTools:
     """Test suite for search_tools tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
     async def test_search_tools_returns_results(self, mock_get_db):
         """Test search_tools returns formatted tool results."""
-        from nexus_dev.server import search_tools
+        from nexus_dev.tools.mcp_tools import search_tools
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -566,10 +511,10 @@ class TestSearchTools:
         assert call_args.kwargs["doc_type"] == DocumentType.TOOL
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
     async def test_search_tools_no_results(self, mock_get_db):
         """Test search_tools with no results."""
-        from nexus_dev.server import search_tools
+        from nexus_dev.tools.mcp_tools import search_tools
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -581,10 +526,10 @@ class TestSearchTools:
         assert "nonexistent tool" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
     async def test_search_tools_filters_by_server(self, mock_get_db):
         """Test search_tools filters results by server name."""
-        from nexus_dev.server import search_tools
+        from nexus_dev.tools.mcp_tools import search_tools
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -614,10 +559,10 @@ class TestSearchTools:
         assert "homeassistant.send_notification" not in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
     async def test_search_tools_no_results_with_server_filter(self, mock_get_db):
         """Test search_tools with no results after server filtering."""
-        from nexus_dev.server import search_tools
+        from nexus_dev.tools.mcp_tools import search_tools
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -639,10 +584,10 @@ class TestSearchTools:
         assert "github" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
     async def test_search_tools_clamps_limit(self, mock_get_db):
         """Test that limit is clamped to 1-10."""
-        from nexus_dev.server import search_tools
+        from nexus_dev.tools.mcp_tools import search_tools
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(return_value=[])
@@ -657,10 +602,10 @@ class TestSearchTools:
         assert mock_db.search.call_args.kwargs["limit"] == 1
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
     async def test_search_tools_without_parameters(self, mock_get_db):
         """Test search_tools formats results without parameters schema."""
-        from nexus_dev.server import search_tools
+        from nexus_dev.tools.mcp_tools import search_tools
 
         mock_db = MagicMock()
         mock_db.search = AsyncMock(
@@ -689,18 +634,18 @@ class TestSearchTools:
 class TestMCPConfigLoading:
     """Test suite for MCP configuration loading helpers."""
 
-    @patch("nexus_dev.server._mcp_config", None)
-    @patch("nexus_dev.server.MCPConfig")
-    @patch("nexus_dev.server.Path")
-    @patch("nexus_dev.server._find_project_root")
+    @patch("nexus_dev.app_state._mcp_config", None)
+    @patch("nexus_dev.app_state.MCPConfig")
+    @patch("nexus_dev.app_state.Path")
+    @patch("nexus_dev.app_state.find_project_root")
     def test_get_mcp_config_loads_from_file(self, mock_find_root, mock_path, mock_mcp_config):
-        """Test _get_mcp_config loads config hierarchically."""
-        import nexus_dev.server as server
-        from nexus_dev.server import _get_mcp_config
+        """Test get_mcp_config loads config hierarchically."""
+        import nexus_dev.app_state as app_state
+        from nexus_dev.app_state import get_mcp_config
 
-        server._mcp_config = None
+        app_state._mcp_config = None
 
-        # Setup _find_project_root
+        # Setup find_project_root
         mock_root = MagicMock()
         mock_find_root.return_value = mock_root
 
@@ -708,24 +653,24 @@ class TestMCPConfigLoading:
         mock_config_instance = MagicMock()
         mock_mcp_config.load_hierarchical.return_value = mock_config_instance
 
-        config = _get_mcp_config()
+        config = get_mcp_config()
 
         assert config is mock_config_instance
         mock_mcp_config.load_hierarchical.assert_called_once()
 
-    @patch("nexus_dev.server._mcp_config", None)
-    @patch("nexus_dev.server.MCPConfig")
+    @patch("nexus_dev.app_state._mcp_config", None)
+    @patch("nexus_dev.app_state.MCPConfig")
     def test_get_mcp_config_returns_none_on_failure(self, mock_mcp_config):
-        """Test _get_mcp_config returns None if load_hierarchical returns None (no config found)."""
-        import nexus_dev.server as server
-        from nexus_dev.server import _get_mcp_config
+        """Test get_mcp_config returns None if load_hierarchical returns None (no config found)."""
+        import nexus_dev.app_state as app_state
+        from nexus_dev.app_state import get_mcp_config
 
-        server._mcp_config = None
+        app_state._mcp_config = None
 
         # Simulate load_hierarchical finding nothing or failing gracefully
         mock_mcp_config.load_hierarchical.return_value = None
 
-        config = _get_mcp_config()
+        config = get_mcp_config()
 
         assert config is None
         mock_mcp_config.load_hierarchical.assert_called_once()
@@ -735,10 +680,10 @@ class TestListServers:
     """Test suite for list_servers tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_list_servers_no_config(self, mock_get_mcp_config):
         """Test list_servers returns message when no config exists."""
-        from nexus_dev.server import list_servers
+        from nexus_dev.tools.mcp_tools import list_servers
 
         mock_get_mcp_config.return_value = None
 
@@ -748,10 +693,10 @@ class TestListServers:
         assert "nexus-mcp init" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_list_servers_with_active_servers(self, mock_get_mcp_config):
         """Test list_servers shows active servers."""
-        from nexus_dev.server import list_servers
+        from nexus_dev.tools.mcp_tools import list_servers
 
         mock_server1 = MagicMock()
         mock_server1.command = "python"
@@ -770,10 +715,10 @@ class TestListServers:
         assert "python" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_list_servers_with_disabled_servers(self, mock_get_mcp_config):
         """Test list_servers shows disabled servers."""
-        from nexus_dev.server import list_servers
+        from nexus_dev.tools.mcp_tools import list_servers
 
         mock_server1 = MagicMock()
         mock_server1.command = "python"
@@ -800,10 +745,10 @@ class TestListServers:
         assert "disabled" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_list_servers_empty_config(self, mock_get_mcp_config):
         """Test list_servers with empty servers config."""
-        from nexus_dev.server import list_servers
+        from nexus_dev.tools.mcp_tools import list_servers
 
         mock_config = MagicMock()
         mock_config.servers = {}
@@ -822,9 +767,9 @@ class TestMain:
 
     @patch("sys.argv", ["nexus-dev"])
     @patch("nexus_dev.server.mcp")
-    @patch("nexus_dev.server._get_mcp_config")
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
+    @patch("nexus_dev.server.get_mcp_config")
+    @patch("nexus_dev.server.get_database")
+    @patch("nexus_dev.server.get_config")
     def test_main_initializes_components(
         self, mock_get_config, mock_get_db, mock_get_mcp_config, mock_mcp
     ):
@@ -840,9 +785,9 @@ class TestMain:
 
     @patch("sys.argv", ["nexus-dev"])
     @patch("nexus_dev.server.mcp")
-    @patch("nexus_dev.server._get_mcp_config")
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_config")
+    @patch("nexus_dev.server.get_mcp_config")
+    @patch("nexus_dev.server.get_database")
+    @patch("nexus_dev.server.get_config")
     def test_main_handles_init_exception(
         self, mock_get_config, mock_get_db, mock_get_mcp_config, mock_mcp
     ):
@@ -864,10 +809,10 @@ class TestGetToolSchema:
     """Test suite for get_tool_schema tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_tool_schema_no_config(self, mock_get_mcp_config):
         """Test get_tool_schema returns message when no config exists."""
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_get_mcp_config.return_value = None
 
@@ -876,10 +821,10 @@ class TestGetToolSchema:
         assert "No MCP config" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_tool_schema_server_not_found(self, mock_get_mcp_config):
         """Test get_tool_schema returns error for missing server."""
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_config = MagicMock()
         mock_config.servers = {"github": MagicMock()}
@@ -892,10 +837,10 @@ class TestGetToolSchema:
         assert "Available" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_tool_schema_server_disabled(self, mock_get_mcp_config):
         """Test get_tool_schema returns error for disabled server."""
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_server = MagicMock()
         mock_server.enabled = False
@@ -909,13 +854,13 @@ class TestGetToolSchema:
         assert "Server is disabled" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_tool_schema_success(self, mock_get_mcp_config, mock_get_conn_manager):
         """Test get_tool_schema returns valid schema."""
         import json
 
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -951,11 +896,13 @@ class TestGetToolSchema:
         assert "properties" in parsed["parameters"]
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
-    async def test_get_tool_schema_tool_not_found(self, mock_get_mcp_config, mock_get_conn_manager):
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
+    async def test_get_tool_schema_tool_not_found(
+        self, mock_get_mcp_config, mock_get_conn_manager
+    ):
         """Test get_tool_schema returns error for missing tool."""
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -983,13 +930,13 @@ class TestGetToolSchema:
         assert "github.nonexistent" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_tool_schema_connection_error(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test get_tool_schema handles connection errors."""
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1009,14 +956,14 @@ class TestGetToolSchema:
         assert "Connection refused" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_tool_schema_handles_timeout_error(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test get_tool_schema handles MCPTimeoutError."""
         from nexus_dev.gateway.connection_manager import MCPTimeoutError
-        from nexus_dev.server import get_tool_schema
+        from nexus_dev.tools.mcp_tools import get_tool_schema
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1041,10 +988,10 @@ class TestInvokeTool:
     """Test suite for invoke_tool tool."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_no_config(self, mock_get_mcp_config):
         """Test invoke_tool returns message when no config exists."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_get_mcp_config.return_value = None
 
@@ -1054,10 +1001,10 @@ class TestInvokeTool:
         assert "nexus-mcp init" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_server_not_found(self, mock_get_mcp_config):
         """Test invoke_tool returns error for missing server."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_config = MagicMock()
         mock_config.servers = {"github": MagicMock()}
@@ -1070,10 +1017,10 @@ class TestInvokeTool:
         assert "Available" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_server_disabled(self, mock_get_mcp_config):
         """Test invoke_tool returns error for disabled server."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = False
@@ -1087,13 +1034,13 @@ class TestInvokeTool:
         assert "Server is disabled" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_success_with_text_content(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool returns formatted result with text content."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1121,13 +1068,13 @@ class TestInvokeTool:
         )
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_success_no_arguments(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool with no arguments passes empty dict."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1151,13 +1098,13 @@ class TestInvokeTool:
         )
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_handles_connection_error(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool handles connection errors."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1176,14 +1123,14 @@ class TestInvokeTool:
         assert "Connection refused" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_handles_timeout_error(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool handles MCPTimeoutError specifically."""
         from nexus_dev.gateway.connection_manager import MCPTimeoutError
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1204,14 +1151,14 @@ class TestInvokeTool:
         assert "timed out" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_handles_mcp_connection_error(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool handles MCPConnectionError specifically."""
         from nexus_dev.gateway.connection_manager import MCPConnectionError
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1232,13 +1179,13 @@ class TestInvokeTool:
         assert "Failed to connect" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_multiple_content_items(
         self, mock_get_mcp_config, mock_get_conn_manager
     ):
         """Test invoke_tool formats multiple content items."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1266,11 +1213,11 @@ class TestInvokeTool:
         assert "Line 2" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_connection_manager")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_invoke_tool_non_text_content(self, mock_get_mcp_config, mock_get_conn_manager):
         """Test invoke_tool handles non-text content items."""
-        from nexus_dev.server import invoke_tool
+        from nexus_dev.tools.mcp_tools import invoke_tool
 
         mock_server = MagicMock()
         mock_server.enabled = True
@@ -1302,14 +1249,14 @@ class TestGetActiveToolsResource:
     """Test suite for get_active_tools_resource resource."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_no_config(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource returns message when no config exists."""
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_get_mcp_config.return_value = None
 
@@ -1319,14 +1266,14 @@ class TestGetActiveToolsResource:
         assert "nexus-mcp init" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_no_active_servers(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource with no active servers."""
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "default"
@@ -1339,14 +1286,14 @@ class TestGetActiveToolsResource:
         assert "default" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_with_tools(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource returns tools grouped by server."""
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "development"
@@ -1399,14 +1346,14 @@ class TestGetActiveToolsResource:
         assert "Turn on a light" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_server_with_no_tools(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource with server that has no tools."""
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "default"
@@ -1439,14 +1386,14 @@ class TestGetActiveToolsResource:
         assert "create_issue" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_truncates_long_descriptions(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource truncates descriptions longer than 100 chars."""
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "default"
@@ -1478,14 +1425,14 @@ class TestGetActiveToolsResource:
         assert long_description not in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_with_high_limit(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
         """Test get_active_tools_resource queries with high limit for all tools."""
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "default"
@@ -1504,9 +1451,9 @@ class TestGetActiveToolsResource:
         assert call_args.kwargs["limit"] == 1000
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_active_server_names")
-    @patch("nexus_dev.server._get_mcp_config")
+    @patch("nexus_dev.tools.mcp_tools.get_database")
+    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
+    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
     async def test_get_active_tools_filters_by_active_servers(
         self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
     ):
@@ -1515,7 +1462,7 @@ class TestGetActiveToolsResource:
         This test verifies that when multiple servers' tools exist in the database,
         only tools from servers in the active profile are returned.
         """
-        from nexus_dev.server import get_active_tools_resource
+        from nexus_dev.tools.mcp_tools import get_active_tools_resource
 
         mock_config = MagicMock()
         mock_config.active_profile = "dev"
@@ -1558,11 +1505,11 @@ class TestProjectRootDiscovery:
     """Test suite for project root discovery functions."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_project_root_from_session")
+    @patch("nexus_dev.app_state.get_project_root_from_session")
     @patch("os.environ", {"NEXUS_PROJECT_ROOT": "/env/project"})
     async def test_find_project_root_from_env(self, mock_get_root_session):
-        """Test _find_project_root using environment variable."""
-        from nexus_dev.server import _find_project_root
+        """Test find_project_root using environment variable."""
+        from nexus_dev.app_state import find_project_root
 
         # We need to mock existence check for /env/project/nexus_config.json
         def mock_exists(self):
@@ -1571,16 +1518,16 @@ class TestProjectRootDiscovery:
 
         with (
             patch.object(Path, "exists", autospec=True, side_effect=mock_exists),
-            patch("nexus_dev.server._project_root", None),
+            patch("nexus_dev.app_state._project_root", None),
         ):
-            root = _find_project_root()
+            root = find_project_root()
             assert root == Path("/env/project")
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server.Path.cwd")
+    @patch("nexus_dev.app_state.Path.cwd")
     async def test_find_project_root_by_walking_up(self, mock_cwd):
-        """Test _find_project_root by walking up from current directory."""
-        from nexus_dev.server import _find_project_root
+        """Test find_project_root by walking up from current directory."""
+        from nexus_dev.app_state import find_project_root
 
         # Mock Path.cwd().resolve() to return /a/b/c
         mock_cwd.return_value.resolve.return_value = Path("/a/b/c")
@@ -1592,15 +1539,15 @@ class TestProjectRootDiscovery:
 
         with (
             patch.object(Path, "exists", autospec=True, side_effect=mock_exists),
-            patch("nexus_dev.server._project_root", None),
+            patch("nexus_dev.app_state._project_root", None),
         ):
-            root = _find_project_root()
+            root = find_project_root()
             assert root == Path("/a")
 
     @pytest.mark.asyncio
     async def test_get_project_root_from_session_success(self, mock_ctx):
-        """Test _get_project_root_from_session with valid root."""
-        from nexus_dev.server import _get_project_root_from_session
+        """Test get_project_root_from_session with valid root."""
+        from nexus_dev.app_state import get_project_root_from_session
 
         mock_root = MagicMock()
         mock_root.uri = "file:///test/project"
@@ -1612,13 +1559,13 @@ class TestProjectRootDiscovery:
             return s in ["/test/project", "/test/project/nexus_config.json"]
 
         with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
-            root = await _get_project_root_from_session(mock_ctx)
+            root = await get_project_root_from_session(mock_ctx)
             assert root == Path("/test/project")
 
     @pytest.mark.asyncio
     async def test_get_project_root_from_session_fallback(self, mock_ctx):
         """Test fallback to first root if no nexus_config.json found."""
-        from nexus_dev.server import _get_project_root_from_session
+        from nexus_dev.app_state import get_project_root_from_session
 
         mock_root = MagicMock()
         mock_root.uri = "file:///test/root"
@@ -1630,5 +1577,5 @@ class TestProjectRootDiscovery:
             return str(self).rstrip("/") == "/test/root"
 
         with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
-            root = await _get_project_root_from_session(mock_ctx)
+            root = await get_project_root_from_session(mock_ctx)
             assert root == Path("/test/root")

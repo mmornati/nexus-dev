@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nexus_dev import server
 from nexus_dev.config import NexusConfig
 from nexus_dev.hybrid_db import HybridDatabase
+from nexus_dev.tools.context import get_recent_context
 
 
 @pytest.fixture
@@ -36,9 +36,9 @@ def mock_hybrid_db(redis_client):
 @pytest.mark.asyncio
 async def test_get_recent_context_success(mock_hybrid_db):
     """Test successful retrieval of context."""
-    # Patch the server's hybrid db getter
-    with patch("nexus_dev.server._get_hybrid_db", return_value=mock_hybrid_db):
-        result = await server.get_recent_context(session_id="test-session")
+    # Patch the tool's hybrid db getter
+    with patch("nexus_dev.tools.context.get_hybrid_db", return_value=mock_hybrid_db):
+        result = await get_recent_context(session_id="test-session")
 
         assert "## Recent Context (Session: test-session)" in result
         assert "### USER" in result
@@ -52,8 +52,8 @@ async def test_get_recent_context_disabled(mock_hybrid_db):
     """Test behavior when hybrid DB is disabled."""
     mock_hybrid_db.config.enable_hybrid_db = False
 
-    with patch("nexus_dev.server._get_hybrid_db", return_value=mock_hybrid_db):
-        result = await server.get_recent_context(session_id="test-session")
+    with patch("nexus_dev.tools.context.get_hybrid_db", return_value=mock_hybrid_db):
+        result = await get_recent_context(session_id="test-session")
 
         assert "Hybrid database is not enabled" in result
 
@@ -63,8 +63,8 @@ async def test_get_recent_context_no_history(mock_hybrid_db):
     """Test retrieval for empty session."""
     mock_hybrid_db.kv.create_session("empty-session", "test-project")
 
-    with patch("nexus_dev.server._get_hybrid_db", return_value=mock_hybrid_db):
-        result = await server.get_recent_context(session_id="empty-session")
+    with patch("nexus_dev.tools.context.get_hybrid_db", return_value=mock_hybrid_db):
+        result = await get_recent_context(session_id="empty-session")
 
         assert "No chat history found" in result
 
@@ -76,13 +76,13 @@ async def test_get_recent_context_limit(mock_hybrid_db):
     for i in range(5):
         mock_hybrid_db.kv.add_message("test-session", "user", f"msg {i}")
 
-    with patch("nexus_dev.server._get_hybrid_db", return_value=mock_hybrid_db):
+    with patch("nexus_dev.tools.context.get_hybrid_db", return_value=mock_hybrid_db):
         # Limit to 2 most recent + 2 existing = 4 messages?
         # Wait, get_recent_messages returns *recent* ones.
         # We added 2 initial, then 5 more. Total 7.
         # Limit 3 should return last 3.
 
-        result = await server.get_recent_context(session_id="test-session", limit=3)
+        result = await get_recent_context(session_id="test-session", limit=3)
 
         # Should contain msg 4, msg 3, msg 2
         assert "msg 4" in result
