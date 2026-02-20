@@ -147,6 +147,9 @@ def test_hybrid_db(indexed_graph: GraphStore, test_config: NexusConfig, graph_cl
     # connect() from re-initializing the database and creating a NEW FalkorDB instance
     hybrid_db._kv_store = MagicMock()
 
+    # Ensure config has hybrid db enabled
+    hybrid_db.config.enable_hybrid_db = True
+
     return hybrid_db
 
 
@@ -157,7 +160,7 @@ async def test_search_dependencies_imports(
     """Test search_dependencies with 'imports' direction."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     # Use absolute path as stored in graph
     main_path = str(sample_project / "main.py")
@@ -175,7 +178,7 @@ async def test_search_dependencies_imported_by(
     """Test search_dependencies with 'imported_by' direction."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     utils_path = str(sample_project / "utils.py")
     result = await server.search_dependencies(utils_path, direction="imported_by", depth=1)
@@ -189,7 +192,7 @@ async def test_search_dependencies_both(test_hybrid_db, sample_project: Path, mo
     """Test search_dependencies with 'both' direction."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     auth_path = str(sample_project / "auth.py")
     result = await server.search_dependencies(auth_path, direction="both", depth=1)
@@ -208,7 +211,7 @@ async def test_search_dependencies_depth(test_hybrid_db, sample_project: Path, m
     """Test search_dependencies with depth > 1."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     # main.py -> auth.py -> utils.py (depth 2)
     main_path = str(sample_project / "main.py")
@@ -222,7 +225,7 @@ async def test_search_dependencies_not_found(test_hybrid_db, monkeypatch) -> Non
     """Test search_dependencies with non-existent file."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     result = await server.search_dependencies("nonexistent.py", direction="both")
 
@@ -235,7 +238,7 @@ async def test_find_callers(test_hybrid_db, monkeypatch) -> None:
     """Test find_callers functionality."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     result = await server.find_callers("validate_user")
 
@@ -249,7 +252,7 @@ async def test_find_callers_multiple(test_hybrid_db, monkeypatch) -> None:
     """Test find_callers with multiple callers."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     result = await server.find_callers("format_name")
 
@@ -263,7 +266,7 @@ async def test_find_callers_not_found(test_hybrid_db, monkeypatch) -> None:
     """Test find_callers with non-existent function."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     result = await server.find_callers("nonexistent_function")
 
@@ -276,7 +279,7 @@ async def test_find_implementations(test_hybrid_db, monkeypatch) -> None:
     """Test find_implementations functionality."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     result = await server.find_implementations("BaseHandler")
 
@@ -291,7 +294,7 @@ async def test_find_implementations_not_found(test_hybrid_db, monkeypatch) -> No
     """Test find_implementations with non-existent class."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     result = await server.find_implementations("NonExistentClass")
 
@@ -306,8 +309,13 @@ async def test_hybrid_db_disabled(test_config: NexusConfig, monkeypatch) -> None
 
     # Ensure hybrid DB is disabled
     test_config.enable_hybrid_db = False
-    monkeypatch.setattr(server, "_hybrid_db", None)
-    monkeypatch.setattr(server, "_get_config", lambda: test_config)
+
+    def mock_raise():
+        raise RuntimeError(
+            "Hybrid database is not enabled. Set enable_hybrid_db=True in nexus_config.json"
+        )
+
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", mock_raise)
 
     result = await server.search_dependencies("test.py")
 
@@ -320,7 +328,7 @@ async def test_depth_clamping(test_hybrid_db, sample_project: Path, monkeypatch)
     """Test that depth is clamped to max 5."""
     from nexus_dev import server
 
-    monkeypatch.setattr(server, "_hybrid_db", test_hybrid_db)
+    monkeypatch.setattr("nexus_dev.tools.graph.get_hybrid_database", lambda: test_hybrid_db)
 
     # Request depth of 100, should be clamped to 5
     main_path = str(sample_project / "main.py")

@@ -11,11 +11,11 @@ from nexus_dev.query_router import QueryIntent, QueryType
 class TestSmartSearch:
     """Test suite for smart_search tool."""
 
-    @patch("nexus_dev.server.HybridQueryRouter")
-    @patch("nexus_dev.server.find_callers")
+    @patch("nexus_dev.tools.search.HybridQueryRouter")
+    @patch("nexus_dev.tools.graph.find_callers")
     async def test_smart_search_graph_callers(self, mock_find_callers, mock_router_cls):
         """Test smart_search routes to find_callers for graph intent."""
-        from nexus_dev.server import smart_search
+        from nexus_dev.tools.search import smart_search
 
         # Setup router mock
         mock_router = MagicMock()
@@ -35,11 +35,11 @@ class TestSmartSearch:
         assert result == "Callers found"
         mock_find_callers.assert_called_once_with("my_function", None)
 
-    @patch("nexus_dev.server.HybridQueryRouter")
-    @patch("nexus_dev.server.search_dependencies")
+    @patch("nexus_dev.tools.search.HybridQueryRouter")
+    @patch("nexus_dev.tools.graph.search_dependencies")
     async def test_smart_search_graph_imports(self, mock_search_deps, mock_router_cls):
         """Test smart_search routes to search_dependencies for import intent."""
-        from nexus_dev.server import smart_search
+        from nexus_dev.tools.search import smart_search
 
         mock_router = MagicMock()
         mock_intent = QueryIntent(
@@ -60,11 +60,11 @@ class TestSmartSearch:
             "main.py", direction="imported_by", project_id=None
         )
 
-    @patch("nexus_dev.server.HybridQueryRouter")
-    @patch("nexus_dev.server.get_recent_context")
+    @patch("nexus_dev.tools.search.HybridQueryRouter")
+    @patch("nexus_dev.tools.context.get_recent_context")
     async def test_smart_search_kv_context(self, mock_get_context, mock_router_cls):
         """Test smart_search routes to get_recent_context for KV intent."""
-        from nexus_dev.server import smart_search
+        from nexus_dev.tools.search import smart_search
 
         mock_router = MagicMock()
         mock_intent = QueryIntent(query_type=QueryType.KV, original_query="show recent context")
@@ -78,10 +78,10 @@ class TestSmartSearch:
         assert result == "Recent context..."
         mock_get_context.assert_called_once_with("sess-123")
 
-    @patch("nexus_dev.server.HybridQueryRouter")
+    @patch("nexus_dev.tools.search.HybridQueryRouter")
     async def test_smart_search_kv_missing_session(self, mock_router_cls):
         """Test smart_search handles missing session_id for KV intent."""
-        from nexus_dev.server import smart_search
+        from nexus_dev.tools.search import smart_search
 
         mock_router = MagicMock()
         mock_intent = QueryIntent(query_type=QueryType.KV, original_query="show history")
@@ -92,11 +92,11 @@ class TestSmartSearch:
         result = await smart_search("show history")
         assert "no 'session_id' was provided" in result
 
-    @patch("nexus_dev.server.HybridQueryRouter")
-    @patch("nexus_dev.server.search_knowledge")
+    @patch("nexus_dev.tools.search.HybridQueryRouter")
+    @patch("nexus_dev.tools.search.search_knowledge")
     async def test_smart_search_vector_fallback(self, mock_search_knowledge, mock_router_cls):
         """Test smart_search falls back to vector search."""
-        from nexus_dev.server import smart_search
+        from nexus_dev.tools.search import smart_search
 
         mock_router = MagicMock()
         mock_intent = QueryIntent(query_type=QueryType.VECTOR, original_query="how to install")

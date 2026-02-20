@@ -111,14 +111,13 @@ class TestCliStatus:
         mock_config_cls,
         mock_db_cls,
         mock_embedder_fn,
-        mock_validate_fn,
+        mock_validate,
         runner,
         tmp_path,
     ):
         """Test status command shows project information."""
         # Ensure validation passes
-        mock_validate_fn.return_value = (True, "")
-
+        mock_validate.return_value = (True, "")
         with runner.isolated_filesystem(temp_dir=tmp_path):
             # Create config file
             (Path.cwd() / "nexus_config.json").write_text(

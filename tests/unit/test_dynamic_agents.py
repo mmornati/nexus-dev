@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from nexus_dev.agents import AgentConfig
-from nexus_dev.server import ask_agent, list_agents, refresh_agents
+from nexus_dev.tools.agents import ask_agent, list_agents, refresh_agents
 
 
 @pytest.fixture
@@ -27,10 +27,10 @@ class TestDynamicAgents:
     """Test suite for dynamic agent registration."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_project_root_from_session")
-    @patch("nexus_dev.server.AgentManager")
-    @patch("nexus_dev.server.mcp")
+    @patch("nexus_dev.tools.agents.get_database")
+    @patch("nexus_dev.tools.agents.get_project_root_from_session")
+    @patch("nexus_dev.tools.agents.AgentManager")
+    @patch("nexus_dev.tools.agents.mcp")
     async def test_refresh_agents_success(
         self, mock_mcp, mock_agent_manager_class, mock_get_root, mock_get_db, mock_ctx
     ):
@@ -75,8 +75,8 @@ class TestDynamicAgents:
             assert "Successfully registered 1 agent tools" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_project_root_from_session")
+    @patch("nexus_dev.tools.agents.get_database")
+    @patch("nexus_dev.tools.agents.get_project_root_from_session")
     async def test_refresh_agents_no_root(self, mock_get_root, mock_get_db, mock_ctx):
         """Test refresh fails if no root found."""
         mock_get_db.return_value = MagicMock()
@@ -87,8 +87,8 @@ class TestDynamicAgents:
         assert "No nexus project root found" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_project_root_from_session")
+    @patch("nexus_dev.tools.agents.get_database")
+    @patch("nexus_dev.tools.agents.get_project_root_from_session")
     async def test_refresh_agents_no_agents_dir(self, mock_get_root, mock_get_db, mock_ctx):
         """Test refresh fails if agents directory missing."""
         mock_get_db.return_value = MagicMock()
@@ -104,9 +104,9 @@ class TestAgentTools:
     """Test suite for agent-related MCP tools."""
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_config")
-    @patch("nexus_dev.server._get_project_root_from_session")
-    @patch("nexus_dev.server.AgentManager")
+    @patch("nexus_dev.tools.agents.get_config")
+    @patch("nexus_dev.tools.agents.get_project_root_from_session")
+    @patch("nexus_dev.tools.agents.AgentManager")
     async def test_list_agents_success(
         self, mock_manager_class, mock_get_root, mock_get_config, mock_ctx
     ):
@@ -132,14 +132,14 @@ class TestAgentTools:
             assert "Description 1" in result
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_config")
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_project_root_from_session")
-    @patch("nexus_dev.server.AgentManager")
-    @patch("nexus_dev.server.AgentExecutor")
+    @patch("nexus_dev.tools.agents.get_config")
+    @patch("nexus_dev.tools.agents.get_database")
+    @patch("nexus_dev.tools.agents.get_project_root_from_session")
+    @patch("nexus_dev.tools.agents.AgentManager")
+    @patch("nexus_dev.agents.agent_executor.AgentExecutor.execute")
     async def test_ask_agent_success(
         self,
-        mock_executor_class,
+        mock_execute,
         mock_manager_class,
         mock_get_root,
         mock_get_db,
@@ -159,21 +159,19 @@ class TestAgentTools:
         mock_manager.get_agent.return_value = agent1
         mock_manager_class.return_value = mock_manager
 
-        mock_executor = MagicMock()
-        mock_executor.execute = AsyncMock(return_value="Agent answer")
-        mock_executor_class.return_value = mock_executor
+        mock_execute.return_value = "Agent answer"
 
         with patch.object(Path, "exists", return_value=True):
             result = await ask_agent("agent1", "do something", mock_ctx)
 
             assert result == "Agent answer"
-            mock_executor.execute.assert_called_once_with("do something", None)
+            mock_execute.assert_called_once_with("do something", None)
 
     @pytest.mark.asyncio
-    @patch("nexus_dev.server._get_config")
-    @patch("nexus_dev.server._get_database")
-    @patch("nexus_dev.server._get_project_root_from_session")
-    @patch("nexus_dev.server.AgentManager")
+    @patch("nexus_dev.tools.agents.get_config")
+    @patch("nexus_dev.tools.agents.get_database")
+    @patch("nexus_dev.tools.agents.get_project_root_from_session")
+    @patch("nexus_dev.tools.agents.AgentManager")
     async def test_ask_agent_not_found(
         self, mock_manager_class, mock_get_root, mock_get_db, mock_get_config, mock_ctx
     ):
