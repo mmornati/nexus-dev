@@ -116,6 +116,16 @@ def test_index_file_classes(builder, mock_graph, tmp_path):
 
     assert stats["classes"] == 3
 
+    # Verify class node creation
+    class_node_call = call(
+        """
+            MERGE (c:Class {id: $id})
+            SET c.name = $name, c.file_path = $path
+            """,
+        {"id": f"{test_file}:UserProfile", "name": "UserProfile", "path": str(test_file)},
+    )
+    assert class_node_call in mock_graph.query.call_args_list
+
     # Verify inheritance relationship
     inheritance_call = call(
         """

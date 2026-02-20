@@ -159,7 +159,7 @@ class JSGraphBuilder:
         self.graph.query(
             """
             MERGE (c:Class {id: $id})
-            SET c.name = $name, f.file_path = $path
+            SET c.name = $name, c.file_path = $path
             """,
             {"id": class_id, "name": class_name, "path": file_path},
         )
