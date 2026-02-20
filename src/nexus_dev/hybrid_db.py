@@ -69,12 +69,19 @@ class HybridDatabase:
                 original_cleanup = redislite.client.RedisMixin._cleanup
 
                 def patched_cleanup(self: Any, *args: Any, **kwargs: Any) -> None:
+                    import logging as _logging
+
+                    # Suppress redislite logger to prevent "I/O on closed file"
+                    # errors when Python logging streams are closed at shutdown
+                    _rl_logger = _logging.getLogger("redislite.client")
+                    _orig_level = _rl_logger.level
+                    _rl_logger.setLevel(_logging.CRITICAL)
                     try:
                         original_cleanup(self, *args, **kwargs)
-                    except AttributeError:
-                        pass
                     except Exception:
                         pass
+                    finally:
+                        _rl_logger.setLevel(_orig_level)
 
                 redislite.client.RedisMixin._cleanup = patched_cleanup
 
@@ -92,7 +99,16 @@ class HybridDatabase:
                 redis.Redis.__init__ = patched_redis_init  # type: ignore[method-assign]
                 redis.StrictRedis.__init__ = patched_redis_init  # type: ignore[method-assign]
 
-            except ImportError:
+                # Fix AttributeError: 'UnixDomainSocketConnection' object has no attribute 'port'
+                # This happens in some redis-py versions (e.g. 5.2.x) with observability enabled
+                from redis.connection import UnixDomainSocketConnection
+
+                if not hasattr(UnixDomainSocketConnection, "host"):
+                    UnixDomainSocketConnection.host = None  # type: ignore
+                if not hasattr(UnixDomainSocketConnection, "port"):
+                    UnixDomainSocketConnection.port = None
+
+            except (ImportError, AttributeError):
                 pass
 
             from redislite import FalkorDB

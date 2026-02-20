@@ -513,7 +513,6 @@ class NexusDatabase:
                     )
                 )
             return results
-            return results
         except Exception:
             return []
 
