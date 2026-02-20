@@ -302,16 +302,11 @@ async def test_find_implementations_not_found(test_hybrid_db, monkeypatch) -> No
 @pytest.mark.asyncio
 async def test_hybrid_db_disabled(test_config: NexusConfig, monkeypatch) -> None:
     """Test graceful handling when hybrid DB is disabled."""
-    from unittest.mock import MagicMock
-
     from nexus_dev import server
 
-    # Ensure hybrid DB is disabled - use a mock with disabled config
-    # (setting _hybrid_db=None would cause lazy re-init from existing nexus_config.json)
+    # Ensure hybrid DB is disabled
     test_config.enable_hybrid_db = False
-    disabled_db = MagicMock()
-    disabled_db.config = test_config
-    monkeypatch.setattr(server, "_hybrid_db", disabled_db)
+    monkeypatch.setattr(server, "_hybrid_db", None)
 
     result = await server.search_dependencies("test.py")
 

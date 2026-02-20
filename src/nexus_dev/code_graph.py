@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import ast
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -110,9 +109,7 @@ class PythonGraphBuilder:
 
         return stats
 
-    @staticmethod
-    @lru_cache
-    def _resolve_module_path(from_file: str, module_name: str) -> str:
+    def _resolve_module_path(self, from_file: str, module_name: str) -> str:
         """Resolve module name to absolute file path.
 
         Args:
