@@ -310,19 +310,23 @@ class NexusDatabase:
 
         table = self._ensure_connected()
 
-        # Delete existing documents
-        ids = [doc.id for doc in docs]
-        for doc_id in ids:
-            try:
-                escaped_id = self._escape_sql_string(doc_id)
-                table.delete(f"id = '{escaped_id}'")
-            except Exception:
-                pass
+        def _sync_upsert() -> list[str]:
+            # Delete existing documents
+            ids = [doc.id for doc in docs]
+            for doc_id in ids:
+                try:
+                    escaped_id = self._escape_sql_string(doc_id)
+                    table.delete(f"id = '{escaped_id}'")
+                except Exception:
+                    pass
 
-        # Insert all documents
-        table.add([doc.to_dict() for doc in docs])
+            # Insert all documents
+            table.add([doc.to_dict() for doc in docs])
+            return ids
 
-        return ids
+        import asyncio
+
+        return await asyncio.get_running_loop().run_in_executor(None, _sync_upsert)
 
     async def search(
         self,
