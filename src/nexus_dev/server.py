@@ -1120,9 +1120,15 @@ async def index_file(
         )
 
     # Resolve file path
+    root = (_find_project_root() or Path.cwd()).resolve()
     path = Path(file_path)
-    if not path.is_absolute():
-        path = Path.cwd() / path
+    path = (root / path).resolve() if not path.is_absolute() else path.resolve()
+
+    # Security check: ensure path is within root
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return f"Error: Access denied. Path is outside project root: {file_path}"
 
     # Get content
     if content is None:
