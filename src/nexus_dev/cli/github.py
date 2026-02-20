@@ -31,9 +31,6 @@ def import_github_command(
 
     database.connect()
 
-    # Load MCP config handled by manager inside generally, but here we can rely on standard init
-    client_manager = MCPClientManager()
-
     # Load MCP config
     mcp_config_path = Path.cwd() / ".nexus" / "mcp_config.json"
     mcp_config = None
@@ -46,12 +43,15 @@ def import_github_command(
     if not mcp_config:
         click.echo("⚠️  No MCP config found. GitHub import may fail if server not found.")
 
-    importer = GitHubImporter(database, config.project_id, client_manager, mcp_config)
-
     click.echo(f"📥 Importing issues from {owner}/{repo}...")
 
+    async def _import() -> int:
+        async with MCPClientManager() as client_manager:
+            importer = GitHubImporter(database, config.project_id, client_manager, mcp_config)
+            return await importer.import_issues(owner, repo, limit, state)
+
     try:
-        count = _run_async(importer.import_issues(owner, repo, limit, state))
+        count = _run_async(_import())
         click.echo(f"✅ Imported {count} issues/PRs")
     except Exception as e:
         click.echo(f"❌ Import failed: {e}", err=True)

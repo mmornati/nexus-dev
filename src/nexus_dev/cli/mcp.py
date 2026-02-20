@@ -23,84 +23,84 @@ async def _index_mcp_servers(
     config: NexusConfig,
 ) -> None:
     """Index tools from specified MCP servers."""
-    client = MCPClientManager()
     embedder = create_embedder(config)
     database = NexusDatabase(config, embedder)
     database.connect()
 
-    for name in server_names:
-        if isinstance(mcp_config, MCPConfig):
-            server_config = mcp_config.servers.get(name)
-            if not server_config:
-                click.echo(f"Server not found: {name}")
-                continue
-            # Convert to internal connection format
-            connection = MCPServerConnection(
-                name=name,
-                command=server_config.command or "",
-                args=server_config.args,
-                env=server_config.env,
-                transport=server_config.transport,
-                url=server_config.url,
-                headers=server_config.headers,
-                timeout=server_config.timeout,
-            )
-        else:
-            server_dict = mcp_config.get("mcpServers", {}).get(name)
-            if not server_dict:
-                click.echo(f"Server not found: {name}")
-                continue
-            connection = MCPServerConnection(
-                name=name,
-                command=server_dict.get("command", ""),
-                args=server_dict.get("args", []),
-                env=server_dict.get("env"),
-                transport=server_dict.get("transport", "stdio"),
-                url=server_dict.get("url"),
-                headers=server_dict.get("headers"),
-                timeout=server_dict.get("timeout", 30.0),
-            )
-
-        # Connect and index
-
-        click.echo(f"Indexing tools from: {name}")
-
-        try:
-            tools = await client.get_tools(connection)
-            click.echo(f"  Found {len(tools)} tools")
-
-            # Create documents and index
-            for tool in tools:
-                text = f"{name}.{tool.name}: {tool.description}"
-                vector = await embedder.embed(text)
-
-                doc = Document(
-                    id=f"{name}:{tool.name}",
-                    text=text,
-                    vector=vector,
-                    project_id=f"{config.project_id}_mcp_tools",
-                    file_path=f"mcp://{name}/{tool.name}",
-                    doc_type=DocumentType.TOOL,
-                    chunk_type="tool",
-                    language="mcp",
-                    name=tool.name,
-                    start_line=0,
-                    end_line=0,
-                    server_name=name,
-                    parameters_schema=json.dumps(tool.input_schema),
+    async with MCPClientManager() as client:
+        for name in server_names:
+            if isinstance(mcp_config, MCPConfig):
+                server_config = mcp_config.servers.get(name)
+                if not server_config:
+                    click.echo(f"Server not found: {name}")
+                    continue
+                # Convert to internal connection format
+                connection = MCPServerConnection(
+                    name=name,
+                    command=server_config.command or "",
+                    args=server_config.args,
+                    env=server_config.env,
+                    transport=server_config.transport,
+                    url=server_config.url,
+                    headers=server_config.headers,
+                    timeout=server_config.timeout,
+                )
+            else:
+                server_dict = mcp_config.get("mcpServers", {}).get(name)
+                if not server_dict:
+                    click.echo(f"Server not found: {name}")
+                    continue
+                connection = MCPServerConnection(
+                    name=name,
+                    command=server_dict.get("command", ""),
+                    args=server_dict.get("args", []),
+                    env=server_dict.get("env"),
+                    transport=server_dict.get("transport", "stdio"),
+                    url=server_dict.get("url"),
+                    headers=server_dict.get("headers"),
+                    timeout=server_dict.get("timeout", 30.0),
                 )
 
-                await database.upsert_document(doc)
+            # Connect and index
 
-            click.echo(f"  ✅ Indexed {len(tools)} tools from {name}")
+            click.echo(f"Indexing tools from: {name}")
 
-        except Exception as e:
-            # Handle ExceptionGroup from anyio/TaskGroup
-            if hasattr(e, "exceptions"):
-                for sub_e in e.exceptions:
-                    click.echo(f"  ❌ Failed to index {name}: {sub_e}")
-            else:
-                click.echo(f"  ❌ Failed to index {name}: {e}")
+            try:
+                tools = await client.get_tools(connection)
+                click.echo(f"  Found {len(tools)} tools")
+
+                # Create documents and index
+                for tool in tools:
+                    text = f"{name}.{tool.name}: {tool.description}"
+                    vector = await embedder.embed(text)
+
+                    doc = Document(
+                        id=f"{name}:{tool.name}",
+                        text=text,
+                        vector=vector,
+                        project_id=f"{config.project_id}_mcp_tools",
+                        file_path=f"mcp://{name}/{tool.name}",
+                        doc_type=DocumentType.TOOL,
+                        chunk_type="tool",
+                        language="mcp",
+                        name=tool.name,
+                        start_line=0,
+                        end_line=0,
+                        server_name=name,
+                        parameters_schema=json.dumps(tool.input_schema),
+                    )
+
+                    await database.upsert_document(doc)
+
+                click.echo(f"  ✅ Indexed {len(tools)} tools from {name}")
+
+            except Exception as e:
+                # Handle ExceptionGroup from anyio/TaskGroup
+                if hasattr(e, "exceptions"):
+                    for sub_e in e.exceptions:
+                        click.echo(f"  ❌ Failed to index {name}: {sub_e}")
+                else:
+                    click.echo(f"  ❌ Failed to index {name}: {e}")
 
     click.echo("Done!")
 
