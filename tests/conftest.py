@@ -9,18 +9,26 @@ try:
     import redis
     import redislite.client
 
-    # 1. Fix AttributeError in __del__
+    # 1. Fix AttributeError in __del__ and ValueError (I/O on closed file)
     # redislite tries to access self.connection_pool in cleanup,
-    # which might not exist or be accessible
+    # which might not exist or be accessible.
+    # It also logs debug messages that fail after pytest closes stdout/stderr.
     original_cleanup = redislite.client.RedisMixin._cleanup
 
     def patched_cleanup(self, *args, **kwargs):
+        import logging
+
+        # Temporarily silence the redislite logger to prevent
+        # "I/O operation on closed file" errors during pytest teardown
+        redislite_logger = logging.getLogger("redislite.client")
+        original_level = redislite_logger.level
+        redislite_logger.setLevel(logging.CRITICAL)
         try:
             original_cleanup(self, *args, **kwargs)
-        except AttributeError:
-            pass
         except Exception:
             pass
+        finally:
+            redislite_logger.setLevel(original_level)
 
     redislite.client.RedisMixin._cleanup = patched_cleanup
 
