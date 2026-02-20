@@ -266,6 +266,13 @@ class NexusDatabase:
         assert self._table is not None
         return self._table
 
+    def _escape_sql_string(self, value: str) -> str:
+        """Escape single quotes in SQL string literals.
+
+        This prevents SQL injection when constructing queries manually.
+        """
+        return value.replace("'", "''")
+
     async def upsert_document(self, doc: Document) -> str:
         """Insert or update a document.
 
@@ -279,7 +286,8 @@ class NexusDatabase:
 
         # Delete existing document with same ID if exists
         try:
-            table.delete(f"id = '{doc.id}'")
+            escaped_id = self._escape_sql_string(doc.id)
+            table.delete(f"id = '{escaped_id}'")
         except Exception:
             pass  # Ignore if document doesn't exist
 
@@ -306,7 +314,8 @@ class NexusDatabase:
         ids = [doc.id for doc in docs]
         for doc_id in ids:
             try:
-                table.delete(f"id = '{doc_id}'")
+                escaped_id = self._escape_sql_string(doc_id)
+                table.delete(f"id = '{escaped_id}'")
             except Exception:
                 pass
 
@@ -344,7 +353,8 @@ class NexusDatabase:
         # Apply filters
         filters = []
         if project_id:
-            filters.append(f"project_id = '{project_id}'")
+            escaped_project_id = self._escape_sql_string(project_id)
+            filters.append(f"project_id = '{escaped_project_id}'")
         if doc_type:
             filters.append(f"doc_type = '{doc_type.value}'")
 
@@ -389,11 +399,14 @@ class NexusDatabase:
         """
         table = self._ensure_connected()
 
+        escaped_file_path = self._escape_sql_string(file_path)
+        escaped_project_id = self._escape_sql_string(project_id)
+
         # Get count before deletion
         try:
             count_before = len(
                 table.search()
-                .where(f"file_path = '{file_path}' AND project_id = '{project_id}'")
+                .where(f"file_path = '{escaped_file_path}' AND project_id = '{escaped_project_id}'")
                 .to_pandas()
             )
         except Exception:
@@ -401,7 +414,7 @@ class NexusDatabase:
 
         # Delete documents
         try:
-            table.delete(f"file_path = '{file_path}' AND project_id = '{project_id}'")
+            table.delete(f"file_path = '{escaped_file_path}' AND project_id = '{escaped_project_id}'")
         except Exception:
             pass
 
@@ -418,15 +431,19 @@ class NexusDatabase:
         """
         table = self._ensure_connected()
 
+        escaped_project_id = self._escape_sql_string(project_id)
+
         # Get count before deletion
         try:
-            count_before = len(table.search().where(f"project_id = '{project_id}'").to_pandas())
+            count_before = len(
+                table.search().where(f"project_id = '{escaped_project_id}'").to_pandas()
+            )
         except Exception:
             count_before = 0
 
         # Delete documents
         try:
-            table.delete(f"project_id = '{project_id}'")
+            table.delete(f"project_id = '{escaped_project_id}'")
         except Exception:
             pass
 
@@ -486,7 +503,8 @@ class NexusDatabase:
             filters = [f"doc_type = '{DocumentType.LESSON.value}'"]
 
             if project_id:
-                filters.append(f"project_id = '{project_id}'")
+                escaped_project_id = self._escape_sql_string(project_id)
+                filters.append(f"project_id = '{escaped_project_id}'")
 
             df = query.where(" AND ".join(filters)).limit(limit * 2).to_pandas()
 
