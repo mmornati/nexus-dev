@@ -378,6 +378,52 @@ class TestIndexFile:
         assert "Error" in result
         assert "not found" in result
 
+    @pytest.mark.asyncio
+    @patch("nexus_dev.tools.knowledge.get_config")
+    @patch("nexus_dev.tools.knowledge.find_project_root")
+    async def test_index_file_too_large(self, mock_find_root, mock_get_config):
+        """Test indexing a file that is too large."""
+        import pathlib
+
+        from nexus_dev.tools.knowledge import MAX_FILE_SIZE_BYTES, index_file
+
+        mock_config = MagicMock()
+        mock_config.project_id = "test"
+        mock_get_config.return_value = mock_config
+
+        # Mock finding root to return cwd
+        mock_find_root.return_value = pathlib.Path.cwd()
+
+        test_file = "large_test_file.py"
+
+        # Patch Path.stat to return large size for our test file
+        # and Path.exists to return True
+        with (
+            patch("pathlib.Path.stat", autospec=True) as mock_stat,
+            patch("pathlib.Path.exists", autospec=True) as mock_exists,
+        ):
+            # Configure exists
+            def side_effect_exists(self):
+                return self.name == test_file
+
+            mock_exists.side_effect = side_effect_exists
+
+            # Configure stat
+            def side_effect_stat(self):
+                if self.name == test_file:
+                    stat_result = MagicMock()
+                    stat_result.st_size = MAX_FILE_SIZE_BYTES + 1
+                    return stat_result
+                raise FileNotFoundError()
+
+            mock_stat.side_effect = side_effect_stat
+
+            result = await index_file(test_file)
+
+        assert "Error" in result
+        assert "too large" in result
+        assert str(MAX_FILE_SIZE_BYTES) in result
+
 
 class TestGetProjectContext:
     """Test suite for get_project_context tool."""

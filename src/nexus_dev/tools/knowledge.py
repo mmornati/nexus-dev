@@ -18,6 +18,8 @@ from nexus_dev.database import Document, DocumentType, generate_document_id
 
 logger = logging.getLogger(__name__)
 
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB limit
+
 
 async def _index_chunks(
     chunks: list[CodeChunk],
@@ -128,6 +130,13 @@ async def index_file(
         if not path.exists():
             return f"Error: File not found: {path}"
         try:
+            file_size = path.stat().st_size
+            if file_size > MAX_FILE_SIZE_BYTES:
+                return (
+                    f"Error: File too large: {path} ({file_size} bytes). "
+                    f"Max size is {MAX_FILE_SIZE_BYTES} bytes."
+                )
+
             content = path.read_text(encoding="utf-8")
         except Exception as e:
             return f"Error reading file: {e!s}"
