@@ -287,9 +287,7 @@ async def test_import_issues_json_error(mock_database, mock_client_manager, mock
 
 
 @pytest.mark.asyncio
-async def test_import_issues_non_list_response(
-    mock_database, mock_client_manager, mock_mcp_config
-):
+async def test_import_issues_non_list_response(mock_database, mock_client_manager, mock_mcp_config):
     """Test when tool returns a dict or single item instead of a list."""
     importer = GitHubImporter(
         database=mock_database,
