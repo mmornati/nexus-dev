@@ -134,7 +134,14 @@ class TestCliStatus:
             mock_db.get_project_stats = mock_get_stats
             mock_db_cls.return_value = mock_db
 
-            result = runner.invoke(cli, ["status"])
+            # Run coroutine explicitly in mock
+            def mock_run_async(coro):
+                import asyncio
+
+                return asyncio.run(coro)
+
+            with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+                result = runner.invoke(cli, ["status"])
 
             assert "Test Project" in result.output
             assert "test-123" in result.output
@@ -209,7 +216,13 @@ class TestCliIndex:
             mock_registry.chunk_file.return_value = [mock_chunk]
 
             # Use -q to skip confirmation
-            result = runner.invoke(cli, ["index", "test.py", "-q"])
+            def mock_run_async(coro):
+                import asyncio
+
+                return asyncio.run(coro)
+
+            with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+                result = runner.invoke(cli, ["index", "test.py", "-q"])
 
             assert result.exit_code == 0 or "Indexed" in result.output
 
@@ -253,7 +266,13 @@ class TestCliIndex:
                 mock_db_cls.return_value = mock_db
 
                 # Run index command recursively on current dir
-                result = runner.invoke(cli, ["index", ".", "-r"], input="y\n")
+                def mock_run_async(coro):
+                    import asyncio
+
+                    return asyncio.run(coro)
+
+                with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+                    result = runner.invoke(cli, ["index", ".", "-r"], input="y\n")
 
                 assert result.exit_code == 0
 

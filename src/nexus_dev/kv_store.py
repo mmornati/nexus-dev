@@ -220,7 +220,7 @@ class KVStore:
     def close(self) -> None:
         """Close database connection."""
         try:
-            self.client.close()
+            self.client.close()  # type: ignore[no-untyped-call]
         except Exception:
             pass
 

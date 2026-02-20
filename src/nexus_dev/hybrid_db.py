@@ -97,7 +97,7 @@ class HybridDatabase:
                 from redis.connection import UnixDomainSocketConnection
 
                 if not hasattr(UnixDomainSocketConnection, "host"):
-                    UnixDomainSocketConnection.host = None  # type: ignore
+                    UnixDomainSocketConnection.host = None
                 if not hasattr(UnixDomainSocketConnection, "port"):
                     UnixDomainSocketConnection.port = None
 

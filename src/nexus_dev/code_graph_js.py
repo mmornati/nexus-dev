@@ -113,7 +113,7 @@ class JSGraphBuilder:
         # Always match both strings and comments to correctly handle boundaries
         pattern = re.compile(f"{string_pattern}|{comment_pattern}", re.VERBOSE)
 
-        def replacer(match: re.Match) -> str:
+        def replacer(match: re.Match[str]) -> str:
             text = match.group(0)
             # If it's a string (starts with quote) and we are NOT masking strings, return as is
             if not mask_strings and (
