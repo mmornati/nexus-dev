@@ -106,7 +106,7 @@ class HybridDatabase:
                 if not hasattr(UnixDomainSocketConnection, "host"):
                     UnixDomainSocketConnection.host = None  # type: ignore
                 if not hasattr(UnixDomainSocketConnection, "port"):
-                    UnixDomainSocketConnection.port = None 
+                    UnixDomainSocketConnection.port = None
 
             except (ImportError, AttributeError):
                 pass
