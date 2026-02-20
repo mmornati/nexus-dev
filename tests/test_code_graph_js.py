@@ -160,3 +160,105 @@ def test_language_detection(builder, mock_graph, tmp_path):
         {"path": str(ts_file), "language": "typescript", "project_id": "test-proj"},
     )
     assert ts_call in mock_graph.query.call_args_list
+
+
+def test_index_file_ignores_strings_and_comments(builder, mock_graph, tmp_path):
+    """Test that definitions inside strings and comments are ignored."""
+    content = """
+    // function commentedOut() {}
+    /*
+       function multiLineComment() {}
+    */
+
+    const str1 = "function inDoubleQuote() {}";
+    const str2 = 'function inSingleQuote() {}';
+    const str3 = `function inBacktick() {}`;
+
+    // Real function
+    function realFunction() {}
+
+    // Real class
+    class RealClass {}
+
+    // Fake class in string
+    const classStr = "class FakeClass {}";
+    """
+
+    test_file = tmp_path / "edge_cases.js"
+    test_file.write_text(content, encoding="utf-8")
+
+    stats = builder.index_file(test_file)
+
+    # Should only find 1 function (realFunction) and 1 class (RealClass)
+    assert stats["functions"] == 1
+    assert stats["classes"] == 1
+
+    # Verify ONLY realFunction was indexed
+    # Check that query calls do NOT contain the fake names
+    fake_names = [
+        "commentedOut",
+        "multiLineComment",
+        "inDoubleQuote",
+        "inSingleQuote",
+        "inBacktick",
+        "FakeClass",
+    ]
+
+    # Collect all 'name' parameters passed to queries
+    captured_names = []
+    for call_obj in mock_graph.query.call_args_list:
+        args, _ = call_obj
+        if len(args) > 1:
+            params = args[1]
+            if params and "name" in params:
+                captured_names.append(params["name"])
+
+    for name in fake_names:
+        assert name not in captured_names, f"Found fake definition: {name}"
+
+    assert "realFunction" in captured_names
+    assert "RealClass" in captured_names
+
+
+def test_imports_with_comment_like_strings(builder, mock_graph, tmp_path):
+    """Test that imports are found even if strings contain comment characters."""
+    content = """
+    const url = "http://example.com";
+    import A from 'module-a';
+
+    const regex = "/*";
+    import B from 'module-b';
+
+    const mixed = ' // comment start ';
+    import C from 'module-c';
+
+    const s = "/*";
+    import D from 'module-d';
+    const e = "*/";
+    """
+
+    test_file = tmp_path / "imports_edge_case.js"
+    test_file.write_text(content, encoding="utf-8")
+
+    stats = builder.index_file(test_file)
+
+    assert stats["imports"] == 4
+
+    # Verify module names
+    captured_modules = []
+    # Imports use _add_import which calls query twice. One for file node, one for relationship.
+    # The file node query has 'path' parameter which is module path (or node_modules/name)
+
+    for call_obj in mock_graph.query.call_args_list:
+        args, _ = call_obj
+        if len(args) > 1:
+            params = args[1]
+            if params and "path" in params:
+                path = params["path"]
+                if "node_modules/" in path:
+                    captured_modules.append(path.replace("node_modules/", ""))
+
+    assert "module-a" in captured_modules
+    assert "module-b" in captured_modules
+    assert "module-c" in captured_modules
+    assert "module-d" in captured_modules
