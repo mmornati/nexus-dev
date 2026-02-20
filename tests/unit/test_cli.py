@@ -104,6 +104,7 @@ class TestCliStatus:
     @patch("nexus_dev.cli.create_embedder")
     @patch("nexus_dev.cli.NexusDatabase")
     @patch("nexus_dev.cli.NexusConfig")
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test"})
     def test_status_shows_project_info(
         self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
     ):
