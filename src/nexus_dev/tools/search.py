@@ -305,9 +305,7 @@ async def smart_search(
                 direction = "imported_by"
             elif "what does" in q_lower and "import" in q_lower:
                 direction = "imports"
-            return await search_dependencies(
-                entity, direction=direction, project_id=project_id
-            )
+            return await search_dependencies(entity, direction=direction, project_id=project_id)
 
         elif "implements" in q_lower or "extends" in q_lower or "subclasses" in q_lower:
             return await find_implementations(entity, project_id)

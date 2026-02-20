@@ -898,9 +898,7 @@ class TestGetToolSchema:
     @pytest.mark.asyncio
     @patch("nexus_dev.tools.mcp_tools.get_connection_manager")
     @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
-    async def test_get_tool_schema_tool_not_found(
-        self, mock_get_mcp_config, mock_get_conn_manager
-    ):
+    async def test_get_tool_schema_tool_not_found(self, mock_get_mcp_config, mock_get_conn_manager):
         """Test get_tool_schema returns error for missing tool."""
         from nexus_dev.tools.mcp_tools import get_tool_schema
 

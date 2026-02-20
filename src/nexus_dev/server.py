@@ -167,7 +167,7 @@ def main() -> None:
                 "Server initialization complete, running SSE transport on %s:%d",
                 args.host,
                 args.port,
-                )
+            )
             mcp.run(transport="sse", host=args.host, port=args.port)  # type: ignore
         else:
             logger.info("Server initialization complete, running stdio transport")
