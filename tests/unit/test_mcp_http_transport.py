@@ -118,3 +118,106 @@ async def test_get_tools_http_sse_wrapped_json():
         assert len(tools) == 1
         assert tools[0].name == "sse-tool"
         assert tools[0].description == "SSE Tool"
+
+
+@pytest.mark.asyncio
+async def test_call_tool_http_success():
+    """Test call_tool with HTTP transport success."""
+    server = MCPServerConnection(
+        name="test-http",
+        command="",
+        args=[],
+        transport="http",
+        url="http://test.com/mcp",
+        headers={"Authorization": "Bearer token"},
+        timeout=10.0,
+    )
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"result": {"data": "tool output"}}
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        manager = MCPClientManager()
+        result = await manager.call_tool(server, "test-tool", {"arg": "value"})
+
+        assert result == {"data": "tool output"}
+
+        mock_client.post.assert_called_once()
+        args, kwargs = mock_client.post.call_args
+        assert args[0] == "http://test.com/mcp"
+        assert kwargs["headers"] == {"Authorization": "Bearer token"}
+        assert kwargs["json"] == {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "test-tool", "arguments": {"arg": "value"}},
+        }
+        assert kwargs["timeout"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_call_tool_http_error():
+    """Test call_tool with HTTP transport error."""
+    server = MCPServerConnection(
+        name="test-http-error", command="", args=[], transport="http", url="http://test.com/mcp"
+    )
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"error": {"code": -32600, "message": "Invalid Request"}}
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        manager = MCPClientManager()
+        with pytest.raises(RuntimeError, match="JSON-RPC error"):
+            await manager.call_tool(server, "test-tool", {})
+
+
+@pytest.mark.asyncio
+async def test_call_tool_http_missing_url():
+    """Test call_tool with HTTP transport missing URL."""
+    server = MCPServerConnection(
+        name="test-http-no-url", command="", args=[], transport="http", url=None
+    )
+
+    manager = MCPClientManager()
+    with pytest.raises(ValueError, match="URL required for HTTP transport"):
+        await manager.call_tool(server, "test-tool", {})
+
+
+@pytest.mark.asyncio
+async def test_call_tool_http_sse_wrapped_json():
+    """Test call_tool with HTTP transport and SSE-wrapped JSON response."""
+    server = MCPServerConnection(
+        name="test-http-sse",
+        command="",
+        args=[],
+        transport="http",
+        url="http://test.com/mcp",
+        timeout=10.0,
+    )
+
+    # Mock response that fails json() but has text with SSE format
+    mock_response = MagicMock()
+    mock_response.json.side_effect = Exception("JSON Decode Error")
+    mock_response.text = 'event: message\ndata: {"result": {"data": "sse output"}}\n\n'
+    mock_response.status_code = 200
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_client.__aenter__.return_value = mock_client
+    mock_client.__aexit__.return_value = None
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        manager = MCPClientManager()
+        result = await manager.call_tool(server, "test-tool", {})
+
+        assert result == {"data": "sse output"}
