@@ -212,6 +212,10 @@ class TestNexusDatabase:
 
         assert result == ["doc-0", "doc-1", "doc-2"]
         mock_table.add.assert_called_once()
+        # Verify batch delete was called
+        mock_table.delete.assert_called_once()
+        call_args = mock_table.delete.call_args[0][0]
+        assert "id IN ('doc-0', 'doc-1', 'doc-2')" in call_args
 
     @patch("nexus_dev.database.lancedb")
     @pytest.mark.asyncio
