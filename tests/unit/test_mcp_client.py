@@ -382,3 +382,62 @@ class TestMCPClientManager:
 
             with pytest.raises(Exception, match="Connection failed"):
                 await manager.get_tools(server)
+
+    @pytest.mark.asyncio
+    async def test_call_tool_success(self):
+        """Test calling a tool successfully."""
+        mock_result = MagicMock()
+        mock_result.content = [{"text": "Tool output"}]
+
+        mock_session = MagicMock()
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = AsyncMock(return_value=mock_result)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        mock_read = MagicMock()
+        mock_write = MagicMock()
+        mock_streams = (mock_read, mock_write)
+
+        with (
+            patch("nexus_dev.mcp_client.stdio_client") as mock_stdio,
+            patch("nexus_dev.mcp_client.ClientSession", return_value=mock_session),
+            patch("nexus_dev.mcp_client.StdioServerParameters"),
+        ):
+            mock_stdio.return_value.__aenter__ = AsyncMock(return_value=mock_streams)
+            mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            manager = MCPClientManager()
+            server = MCPServerConnection(name="test", command="python", args=[])
+
+            result = await manager.call_tool(server, "test_tool", arguments={"arg": "value"})
+
+            assert result == mock_result
+            mock_session.call_tool.assert_awaited_once_with("test_tool", {"arg": "value"})
+
+    @pytest.mark.asyncio
+    async def test_call_tool_failure(self):
+        """Test calling a tool that fails."""
+        mock_session = MagicMock()
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = AsyncMock(side_effect=Exception("Tool failed"))
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        mock_read = MagicMock()
+        mock_write = MagicMock()
+        mock_streams = (mock_read, mock_write)
+
+        with (
+            patch("nexus_dev.mcp_client.stdio_client") as mock_stdio,
+            patch("nexus_dev.mcp_client.ClientSession", return_value=mock_session),
+            patch("nexus_dev.mcp_client.StdioServerParameters"),
+        ):
+            mock_stdio.return_value.__aenter__ = AsyncMock(return_value=mock_streams)
+            mock_stdio.return_value.__aexit__ = AsyncMock(return_value=None)
+
+            manager = MCPClientManager()
+            server = MCPServerConnection(name="test", command="python", args=[])
+
+            with pytest.raises(Exception, match="Tool failed"):
+                await manager.call_tool(server, "test_tool", arguments={})
