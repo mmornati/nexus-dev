@@ -231,6 +231,10 @@ def test_imports_with_comment_like_strings(builder, mock_graph, tmp_path):
 
     const mixed = ' // comment start ';
     import C from 'module-c';
+
+    const s = "/*";
+    import D from 'module-d';
+    const e = "*/";
     """
 
     test_file = tmp_path / "imports_edge_case.js"
@@ -238,7 +242,7 @@ def test_imports_with_comment_like_strings(builder, mock_graph, tmp_path):
 
     stats = builder.index_file(test_file)
 
-    assert stats["imports"] == 3
+    assert stats["imports"] == 4
 
     # Verify module names
     captured_modules = []
@@ -257,3 +261,4 @@ def test_imports_with_comment_like_strings(builder, mock_graph, tmp_path):
     assert "module-a" in captured_modules
     assert "module-b" in captured_modules
     assert "module-c" in captured_modules
+    assert "module-d" in captured_modules

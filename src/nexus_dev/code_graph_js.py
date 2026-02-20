@@ -110,14 +110,20 @@ class JSGraphBuilder:
             r"/\*[\s\S]*?\*/"  # Multi-line comment
         )
 
-        if mask_strings:
-            pattern = re.compile(f"{string_pattern}|{comment_pattern}", re.VERBOSE)
-        else:
-            pattern = re.compile(comment_pattern, re.VERBOSE)
+        # Always match both strings and comments to correctly handle boundaries
+        pattern = re.compile(f"{string_pattern}|{comment_pattern}", re.VERBOSE)
 
-        def replacer(match: re.Match[str]) -> str:
+        def replacer(match: re.Match) -> str:
+            text = match.group(0)
+            # If it's a string (starts with quote) and we are NOT masking strings, return as is
+            if not mask_strings and (
+                text.startswith('"') or text.startswith("'") or text.startswith("`")
+            ):
+                return text
+
+            # Otherwise (it's a comment OR we are masking strings), replace with spaces
             # Replace non-newline characters with space to preserve line numbers
-            return "".join("\n" if c == "\n" else " " for c in match.group(0))
+            return "".join("\n" if c == "\n" else " " for c in text)
 
         return pattern.sub(replacer, content)
 
