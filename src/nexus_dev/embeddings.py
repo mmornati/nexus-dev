@@ -17,6 +17,7 @@ nexus_config.json and cannot be changed at runtime.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from abc import ABC, abstractmethod
 from functools import lru_cache
@@ -455,7 +456,7 @@ class VertexAIEmbedder(EmbeddingProvider):
         # Process in batches
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            embeddings = self._model.get_embeddings(list(batch))
+            embeddings = await asyncio.to_thread(self._model.get_embeddings, list(batch))
             all_embeddings.extend([e.values for e in embeddings])
 
         return all_embeddings

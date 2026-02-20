@@ -7,9 +7,23 @@ import pytest
 # Monkeypatch redislite/falkordb compatibility issues
 try:
     import redis
+    import redis.connection
     import redislite.client
 
-    # 1. Fix AttributeError in __del__ and ValueError (I/O on closed file)
+    # 0. Fix AttributeError: 'UnixDomainSocketConnection' object has no attribute 'port'
+    # redis client instrumentation assumes 'port' attribute exists, but UnixDomainSocketConnection
+    # does not have it. Monkeypatch __init__ to set it on instances.
+    original_unix_init = redis.connection.UnixDomainSocketConnection.__init__
+
+    def patched_unix_init(self, *args, **kwargs):
+        original_unix_init(self, *args, **kwargs)
+        # Ensure 'port' attribute exists to satisfy redis client instrumentation
+        if not hasattr(self, "port"):
+            self.port = 0
+
+    redis.connection.UnixDomainSocketConnection.__init__ = patched_unix_init
+
+    # 1. Fix AttributeError in __del__
     # redislite tries to access self.connection_pool in cleanup,
     # which might not exist or be accessible.
     # It also logs debug messages that fail after pytest closes stdout/stderr.
