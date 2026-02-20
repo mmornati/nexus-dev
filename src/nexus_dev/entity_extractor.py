@@ -202,15 +202,24 @@ class EntityGraphManager:
         Args:
             entities: List of entities to link
         """
+        if not entities or len(entities) < 2:
+            return
+
+        relationships = []
         for i, e1 in enumerate(entities):
             for e2 in entities[i + 1 :]:
                 id1 = f"{self.session_id}:{e1.entity_type}:{e1.name}"
                 id2 = f"{self.session_id}:{e2.entity_type}:{e2.name}"
+                relationships.append({"id1": id1, "id2": id2})
 
-                self.graph.query(
-                    """
-                    MATCH (a:Entity {id: $id1}), (b:Entity {id: $id2})
-                    MERGE (a)-[:DISCUSSED]->(b)
-                    """,
-                    {"id1": id1, "id2": id2},
-                )
+        if not relationships:
+            return
+
+        self.graph.query(
+            """
+            UNWIND $relationships AS rel
+            MATCH (a:Entity {id: rel.id1}), (b:Entity {id: rel.id2})
+            MERGE (a)-[:DISCUSSED]->(b)
+            """,
+            {"relationships": relationships},
+        )
