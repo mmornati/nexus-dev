@@ -75,7 +75,11 @@ def _find_project_root(start_path: Path | None = None) -> Path | None:
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run async function in sync context."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    try:
+        return asyncio.run(coro)
+    except RuntimeError:
+        # If a loop is already running (e.g. in tests), use it
+        return asyncio.get_event_loop().run_until_complete(coro)
 
 
 def requires_config(f: Callable[..., Any]) -> Callable[..., Any]:
