@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from re import Match
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -113,8 +114,8 @@ class JSGraphBuilder:
         # Always match both strings and comments to correctly handle boundaries
         pattern = re.compile(f"{string_pattern}|{comment_pattern}", re.VERBOSE)
 
-        def replacer(match: re.Match[str]) -> str:
-            text = match.group(0)
+        def replacer(match: Match[str]) -> str:
+            text = str(match.group(0))
             # If it's a string (starts with quote) and we are NOT masking strings, return as is
             if not mask_strings and (
                 text.startswith('"') or text.startswith("'") or text.startswith("`")
