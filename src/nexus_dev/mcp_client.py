@@ -40,6 +40,10 @@ class MCPServerConnection:
 class MCPClientManager:
     """Manages connections to multiple MCP servers."""
 
+    def __init__(self) -> None:
+        """Initialize client manager."""
+        self._tool_cache: dict[str, list[MCPToolSchema]] = {}
+
     async def get_tools(self, server: MCPServerConnection) -> list[MCPToolSchema]:
         """Get all tools from an MCP server.
 
@@ -49,6 +53,9 @@ class MCPClientManager:
         Returns:
             List of tool schemas
         """
+        if server.name in self._tool_cache:
+            return self._tool_cache[server.name]
+
         if server.transport == "http":
             if not server.url:
                 raise ValueError(f"URL required for HTTP transport: {server.name}")
@@ -105,6 +112,7 @@ class MCPClientManager:
                             input_schema=tool.get("inputSchema", {}),
                         )
                     )
+                self._tool_cache[server.name] = schemas
                 return schemas
 
         elif server.transport == "sse":
@@ -142,6 +150,7 @@ class MCPClientManager:
                     )
                 )
 
+            self._tool_cache[server.name] = schemas
             return schemas
 
     async def get_tool_schema(
