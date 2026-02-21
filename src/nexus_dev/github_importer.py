@@ -137,12 +137,14 @@ class GitHubImporter:
         elif isinstance(result, dict) and "content" in result:
             content_list = result["content"]
 
-        text_content = ""
+        text_content_parts = []
         for content in content_list:
             if hasattr(content, "text"):
-                text_content += content.text
+                text_content_parts.append(content.text)
             elif isinstance(content, dict) and "text" in content:
-                text_content += content["text"]
+                text_content_parts.append(content["text"])
+
+        text_content = "".join(text_content_parts)
 
         if not text_content:
             return []
