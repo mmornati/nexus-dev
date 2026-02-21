@@ -69,7 +69,7 @@ class HybridDatabase:
                 # Fix AttributeError: 'UnixDomainSocketConnection' object has no attribute 'port'
                 # This occurs in some instrumented versions of redis-py when using unix sockets
                 if not hasattr(UnixDomainSocketConnection, "port"):
-                    UnixDomainSocketConnection.port = 0  # type: ignore[attr-defined]
+                    UnixDomainSocketConnection.port = 0
 
                 # Fix AttributeError in __del__
                 original_cleanup = redislite.client.RedisMixin._cleanup
