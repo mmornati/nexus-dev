@@ -387,6 +387,73 @@ class NexusDatabase:
 
         return search_results
 
+    async def list_documents(
+        self,
+        project_id: str,
+        doc_type: DocumentType | None = None,
+        limit: int = 1000,
+    ) -> list[Document]:
+        """List documents for a project without vector search.
+
+        Args:
+            project_id: Project ID.
+            doc_type: Optional document type filter.
+            limit: Maximum number of results.
+
+        Returns:
+            List of documents.
+        """
+        table = self._ensure_connected()
+
+        filters = [f"project_id = '{project_id}'"]
+        if doc_type:
+            filters.append(f"doc_type = '{doc_type.value}'")
+
+        # Execute query
+        results = table.search().where(" AND ".join(filters)).limit(limit).to_pandas()
+
+        documents = []
+        for _, row in results.iterrows():
+            # Parse timestamp if present
+            timestamp = datetime.now(UTC)
+            if "timestamp" in row and row["timestamp"]:
+                try:
+                    timestamp = datetime.fromisoformat(row["timestamp"])
+                except ValueError:
+                    pass
+
+            # Parse doc_type enum
+            try:
+                dt = DocumentType(row["doc_type"])
+            except ValueError:
+                dt = DocumentType.CODE  # Default fallback
+
+            # Convert vector to list if needed
+            vector = row["vector"]
+            if hasattr(vector, "tolist"):
+                vector = vector.tolist()
+
+            documents.append(
+                Document(
+                    id=row["id"],
+                    text=row["text"],
+                    vector=vector,
+                    project_id=row["project_id"],
+                    file_path=row["file_path"],
+                    doc_type=dt,
+                    chunk_type=row["chunk_type"],
+                    language=row["language"],
+                    name=row["name"],
+                    start_line=row["start_line"],
+                    end_line=row["end_line"],
+                    timestamp=timestamp,
+                    server_name=row.get("server_name", ""),
+                    parameters_schema=row.get("parameters_schema", ""),
+                )
+            )
+
+        return documents
+
     async def delete_by_file(self, file_path: str, project_id: str) -> int:
         """Delete all documents for a specific file.
 

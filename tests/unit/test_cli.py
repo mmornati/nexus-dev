@@ -101,7 +101,7 @@ class TestCliInit:
 class TestCliStatus:
     """Test suite for nexus-status command."""
 
-    @patch("nexus_dev.cli.validate_embedding_config")
+    @patch("nexus_dev.cli._validate_embeddings_or_exit")
     @patch("nexus_dev.cli.create_embedder")
     @patch("nexus_dev.cli.NexusDatabase")
     @patch("nexus_dev.cli.NexusConfig")
@@ -116,8 +116,7 @@ class TestCliStatus:
         tmp_path,
     ):
         """Test status command shows project information."""
-        # Ensure validation passes
-        mock_validate.return_value = (True, "")
+        mock_validate.return_value = True
         with runner.isolated_filesystem(temp_dir=tmp_path):
             # Create config file
             (Path.cwd() / "nexus_config.json").write_text(
