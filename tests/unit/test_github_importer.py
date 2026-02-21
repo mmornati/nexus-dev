@@ -45,9 +45,7 @@ def mock_mcp_config():
 
 
 @pytest.mark.asyncio
-async def test_fetch_tool_items_concatenation(
-    mock_database, mock_client_manager, mock_mcp_config
-):
+async def test_fetch_tool_items_concatenation(mock_database, mock_client_manager, mock_mcp_config):
     """Test that _fetch_tool_items correctly concatenates text content from multiple items."""
     importer = GitHubImporter(
         database=mock_database,
