@@ -89,7 +89,7 @@ class TestDatabaseSecurity:
         await db.upsert_documents([doc])
 
         # Verify delete was called with escaped ID
-        expected_query = "id = 'doc'' OR ''1''=''1'"
+        expected_query = "id IN ('doc'' OR ''1''=''1')"
         mock_table.delete.assert_called_with(expected_query)
 
     @patch("nexus_dev.database.lancedb")

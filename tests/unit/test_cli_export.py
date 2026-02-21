@@ -21,7 +21,7 @@ class TestCliExport:
     """Test suite for nexus-export command."""
 
     @patch("nexus_dev.embeddings.create_embedder")
-    @patch("nexus_dev.database.NexusDatabase")
+    @patch("nexus_dev.cli.search.NexusDatabase")
     @patch("nexus_dev.config.NexusConfig")
     def test_export_success(self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path):
         """Test export command retrieves documents correctly."""
@@ -44,20 +44,18 @@ class TestCliExport:
 
             # Mock list_documents to return some documents
             async def mock_list_documents(*args: Any, **kwargs: Any) -> list[Document]:
-                doc_type = kwargs.get("doc_type")
-                if doc_type == DocumentType.LESSON:
-                    return [
-                        Document(
-                            id="doc1",
-                            text="Lesson content",
-                            vector=[],
-                            project_id="test",
-                            file_path="lesson.md",
-                            doc_type=DocumentType.LESSON,
-                            name="Lesson 1",
-                        )
-                    ]
-                return []
+                print(f"MOCK CALLED args={args} kwargs={kwargs}")
+                return [
+                    Document(
+                        id="doc1",
+                        text="Lesson content",
+                        vector=[],
+                        project_id="test",
+                        file_path="lesson.md",
+                        doc_type=DocumentType.LESSON,
+                        name="Lesson 1",
+                    )
+                ]
 
             mock_db.list_documents = AsyncMock(side_effect=mock_list_documents)
             mock_db_cls.return_value = mock_db
