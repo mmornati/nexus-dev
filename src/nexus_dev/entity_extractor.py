@@ -41,11 +41,11 @@ class EntityExtractor:
 
     # Regex patterns for common code entities
     # Note: Use non-capturing groups (?:...) when you don't want group(1) to match it
-    PATTERNS: dict[str, str] = {
-        "file": r"[\w/.-]+\.(?:py|js|ts|tsx|jsx|java|go|rs|rb|cpp|c|h)\b",
-        "function": r"\b([a-z_][a-z0-9_]*)\s*\(",
-        "class": r"\b([A-Z][a-zA-Z0-9]+)\b",
-        "error": (
+    PATTERNS: dict[str, re.Pattern[str]] = {
+        "file": re.compile(r"[\w/.-]+\.(?:py|js|ts|tsx|jsx|java|go|rs|rb|cpp|c|h)\b"),
+        "function": re.compile(r"\b([a-z_][a-z0-9_]*)\s*\("),
+        "class": re.compile(r"\b([A-Z][a-zA-Z0-9]+)\b"),
+        "error": re.compile(
             r"\b(Error|Exception|TypeError|ValueError|KeyError|AttributeError|"
             r"RuntimeError|ImportError|IndexError|NameError|OSError|IOError)\b"
         ),
@@ -63,7 +63,7 @@ class EntityExtractor:
         entities: list[ExtractedEntity] = []
 
         for entity_type, pattern in self.PATTERNS.items():
-            for match in re.finditer(pattern, text):
+            for match in pattern.finditer(text):
                 # Get the captured group if exists, otherwise the full match
                 name = match.group(1) if match.lastindex else match.group(0)
                 entities.append(
