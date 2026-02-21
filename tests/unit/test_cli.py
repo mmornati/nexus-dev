@@ -449,6 +449,8 @@ class TestCliIndexMCP:
 
             # Mock MCP client
             mock_client = MagicMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
             mock_tool1 = MagicMock()
             mock_tool1.name = "create_issue"
             mock_tool1.description = "Create a GitHub issue"
@@ -514,6 +516,8 @@ class TestCliIndexMCP:
 
             # Mock MCP client
             mock_client = MagicMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
             mock_tool1 = MagicMock()
             mock_tool1.name = "tool1"
             mock_tool1.description = "Test tool"
@@ -571,6 +575,8 @@ class TestCliIndexMCP:
 
             # Mock MCP client
             mock_client = MagicMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
             mock_client.get_tools = AsyncMock(return_value=[])
             mock_client_cls.return_value = mock_client
 
@@ -657,6 +663,8 @@ class TestCliIndexMCP:
 
             # Mock MCP client to raise exception
             mock_client = MagicMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
             mock_client.get_tools = AsyncMock(side_effect=Exception("Connection failed"))
             mock_client_cls.return_value = mock_client
 
@@ -723,6 +731,8 @@ class TestCliIndexMCP:
 
             # Mock MCP client
             mock_client = MagicMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
             mock_client.get_tools = AsyncMock(return_value=[])
             mock_client_cls.return_value = mock_client
 
@@ -772,6 +782,8 @@ class TestCliIndexMCP:
 
             # Mock dependencies
             mock_client = MagicMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock()
             mock_client.get_tools = AsyncMock(return_value=[])
             mock_client_cls.return_value = mock_client
             mock_db = MagicMock()

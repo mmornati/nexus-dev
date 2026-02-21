@@ -43,6 +43,25 @@ class MCPClientManager:
     def __init__(self) -> None:
         """Initialize client manager."""
         self._tool_cache: dict[str, list[MCPToolSchema]] = {}
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> MCPClientManager:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient()
+        return self._client
 
     async def get_tools(self, server: MCPServerConnection) -> list[MCPToolSchema]:
         """Get all tools from an MCP server.
@@ -60,60 +79,60 @@ class MCPClientManager:
             if not server.url:
                 raise ValueError(f"URL required for HTTP transport: {server.name}")
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    server.url,
-                    headers=server.headers,
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/list",
-                        "params": {},
-                    },
-                    timeout=server.timeout,
-                )
-                response.raise_for_status()
-                try:
-                    data = response.json()
-                except Exception:
-                    # Check for SSE-wrapped JSON (Github quirk)
-                    text = response.text
-                    if "data: " in text:
-                        # Extract JSON from data lines
-                        json_lines = []
-                        for line in text.splitlines():
-                            if line.startswith("data: "):
-                                json_lines.append(line.replace("data: ", "", 1))
+            client = self._get_client()
+            response = await client.post(
+                server.url,
+                headers=server.headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/list",
+                    "params": {},
+                },
+                timeout=server.timeout,
+            )
+            response.raise_for_status()
+            try:
+                data = response.json()
+            except Exception:
+                # Check for SSE-wrapped JSON (Github quirk)
+                text = response.text
+                if "data: " in text:
+                    # Extract JSON from data lines
+                    json_lines = []
+                    for line in text.splitlines():
+                        if line.startswith("data: "):
+                            json_lines.append(line.replace("data: ", "", 1))
 
-                        try:
-                            data = json.loads("".join(json_lines))
-                        except Exception as e:
-                            raise RuntimeError(
-                                f"Failed to parse SSE-wrapped JSON from {server.url}. "
-                                f"Status: {response.status_code}. Body: {response.text[:200]}..."
-                            ) from e
-                    else:
+                    try:
+                        data = json.loads("".join(json_lines))
+                    except Exception as e:
                         raise RuntimeError(
-                            f"Failed to decode JSON response from {server.url}. "
+                            f"Failed to parse SSE-wrapped JSON from {server.url}. "
                             f"Status: {response.status_code}. Body: {response.text[:200]}..."
-                        ) from None
+                        ) from e
+                else:
+                    raise RuntimeError(
+                        f"Failed to decode JSON response from {server.url}. "
+                        f"Status: {response.status_code}. Body: {response.text[:200]}..."
+                    ) from None
 
-                if "error" in data:
-                    raise RuntimeError(f"JSON-RPC error: {data['error']}")
+            if "error" in data:
+                raise RuntimeError(f"JSON-RPC error: {data['error']}")
 
-                schemas = []
-                # Result structure: {"result": {"tools": [...]}}
-                tools_data = data.get("result", {}).get("tools", [])
-                for tool in tools_data:
-                    schemas.append(
-                        MCPToolSchema(
-                            name=tool.get("name"),
-                            description=tool.get("description", ""),
-                            input_schema=tool.get("inputSchema", {}),
-                        )
+            schemas = []
+            # Result structure: {"result": {"tools": [...]}}
+            tools_data = data.get("result", {}).get("tools", [])
+            for tool in tools_data:
+                schemas.append(
+                    MCPToolSchema(
+                        name=tool.get("name"),
+                        description=tool.get("description", ""),
+                        input_schema=tool.get("inputSchema", {}),
                     )
-                self._tool_cache[server.name] = schemas
-                return schemas
+                )
+            self._tool_cache[server.name] = schemas
+            return schemas
 
         elif server.transport == "sse":
             if not server.url:
@@ -195,54 +214,54 @@ class MCPClientManager:
             if not server.url:
                 raise ValueError(f"URL required for HTTP transport: {server.name}")
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    server.url,
-                    headers=server.headers,
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/call",
-                        "params": {
-                            "name": tool_name,
-                            "arguments": arguments or {},
-                        },
+            client = self._get_client()
+            response = await client.post(
+                server.url,
+                headers=server.headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": arguments or {},
                     },
-                    timeout=server.timeout,
-                )
-                response.raise_for_status()
+                },
+                timeout=server.timeout,
+            )
+            response.raise_for_status()
 
-                try:
-                    data = response.json()
-                except Exception:
-                    # Check for SSE-wrapped JSON (Github quirk)
-                    text = response.text
-                    if "data: " in text:
-                        # Extract JSON from data lines
-                        json_lines = []
-                        for line in text.splitlines():
-                            if line.startswith("data: "):
-                                json_lines.append(line.replace("data: ", "", 1))
+            try:
+                data = response.json()
+            except Exception:
+                # Check for SSE-wrapped JSON (Github quirk)
+                text = response.text
+                if "data: " in text:
+                    # Extract JSON from data lines
+                    json_lines = []
+                    for line in text.splitlines():
+                        if line.startswith("data: "):
+                            json_lines.append(line.replace("data: ", "", 1))
 
-                        try:
-                            data = json.loads("".join(json_lines))
-                        except Exception as e:
-                            # print(f"ERROR: Failed to parse SSE JSON. Body: {response.text}")
-                            raise RuntimeError(
-                                f"Failed to parse SSE-wrapped JSON from {server.url}. "
-                                f"Status: {response.status_code}. Body: {response.text[:200]}..."
-                            ) from e
-                    else:
-                        # print(f"ERROR: Failed to parse JSON. Body: {response.text}")
+                    try:
+                        data = json.loads("".join(json_lines))
+                    except Exception as e:
+                        # print(f"ERROR: Failed to parse SSE JSON. Body: {response.text}")
                         raise RuntimeError(
-                            f"Failed to decode JSON response from {server.url}. "
+                            f"Failed to parse SSE-wrapped JSON from {server.url}. "
                             f"Status: {response.status_code}. Body: {response.text[:200]}..."
-                        ) from None
+                        ) from e
+                else:
+                    # print(f"ERROR: Failed to parse JSON. Body: {response.text}")
+                    raise RuntimeError(
+                        f"Failed to decode JSON response from {server.url}. "
+                        f"Status: {response.status_code}. Body: {response.text[:200]}..."
+                    ) from None
 
-                if "error" in data:
-                    raise RuntimeError(f"JSON-RPC error: {data['error']}")
+            if "error" in data:
+                raise RuntimeError(f"JSON-RPC error: {data['error']}")
 
-                return data.get("result", {})
+            return data.get("result", {})
 
         elif server.transport == "sse":
             if not server.url:

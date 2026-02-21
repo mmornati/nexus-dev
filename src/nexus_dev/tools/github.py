@@ -38,13 +38,13 @@ async def import_github_issues(
     if not config:
         return "Error: No project configuration found. Run 'nexus-init' first."
 
-    client_manager = MCPClientManager()
-    mcp_config = get_mcp_config()
+    async with MCPClientManager() as client_manager:
+        mcp_config = get_mcp_config()
 
-    importer = GitHubImporter(database, config.project_id, client_manager, mcp_config)
+        importer = GitHubImporter(database, config.project_id, client_manager, mcp_config)
 
-    try:
-        count = await importer.import_issues(owner, repo, limit, state)
-        return f"Successfully imported {count} issues/PRs from {owner}/{repo}."
-    except Exception as e:
-        return f"Failed to import issues: {e!s}"
+        try:
+            count = await importer.import_issues(owner, repo, limit, state)
+            return f"Successfully imported {count} issues/PRs from {owner}/{repo}."
+        except Exception as e:
+            return f"Failed to import issues: {e!s}"
