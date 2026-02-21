@@ -84,7 +84,7 @@ class JSGraphBuilder:
         for pattern in func_patterns:
             for match in re.finditer(pattern, masked_content):
                 func_name = match.group(1)
-                self._add_function(rel_path, func_name, match.start())
+                self._add_function(rel_path, func_name)
                 stats["functions"] += 1
 
         # Extract classes
@@ -168,7 +168,7 @@ class JSGraphBuilder:
             {"from_path": from_file, "to_path": module_path},
         )
 
-    def _add_function(self, file_path: str, func_name: str, char_pos: int) -> None:
+    def _add_function(self, file_path: str, func_name: str) -> None:
         """Add function node."""
         func_id = f"{file_path}:{func_name}"
 
