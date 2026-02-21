@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from re import Match
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ class JSGraphBuilder:
         for pattern in func_patterns:
             for match in re.finditer(pattern, masked_content):
                 func_name = match.group(1)
-                self._add_function(rel_path, func_name)
+                self._add_function(rel_path, func_name, match.start())
                 stats["functions"] += 1
 
         # Extract classes
@@ -113,8 +114,8 @@ class JSGraphBuilder:
         # Always match both strings and comments to correctly handle boundaries
         pattern = re.compile(f"{string_pattern}|{comment_pattern}", re.VERBOSE)
 
-        def replacer(match: re.Match[str]) -> str:
-            text = match.group(0)
+        def replacer(match: Match[str]) -> str:
+            text = str(match.group(0))
             # If it's a string (starts with quote) and we are NOT masking strings, return as is
             if not mask_strings and (
                 text.startswith('"') or text.startswith("'") or text.startswith("`")
@@ -125,7 +126,8 @@ class JSGraphBuilder:
             # Replace non-newline characters with space to preserve line numbers
             return "".join("\n" if c == "\n" else " " for c in text)
 
-        return pattern.sub(replacer, content)
+        # Explicitly cast to str because mypy infers Any from pattern.sub
+        return str(pattern.sub(replacer, content))
 
     def _add_file(self, file_path: str, language: str) -> None:
         """Add file node to graph."""
@@ -168,7 +170,7 @@ class JSGraphBuilder:
             {"from_path": from_file, "to_path": module_path},
         )
 
-    def _add_function(self, file_path: str, func_name: str) -> None:
+    def _add_function(self, file_path: str, func_name: str, char_pos: int) -> None:
         """Add function node."""
         func_id = f"{file_path}:{func_name}"
 
@@ -195,7 +197,7 @@ class JSGraphBuilder:
         self.graph.query(
             """
             MERGE (c:Class {id: $id})
-            SET c.name = $name, c.file_path = $path
+            SET c.name = $name, f.file_path = $path
             """,
             {"id": class_id, "name": class_name, "path": file_path},
         )

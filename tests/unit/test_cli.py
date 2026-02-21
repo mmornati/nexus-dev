@@ -101,10 +101,10 @@ class TestCliInit:
 class TestCliStatus:
     """Test suite for nexus-status command."""
 
-    @patch("nexus_dev.cli._validate_embeddings_or_exit")
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.utils.validate_embedding_config", return_value=(True, None))
+    @patch("nexus_dev.cli.search.create_embedder")
+    @patch("nexus_dev.cli.search.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test"})
     def test_status_shows_project_info(
         self,
@@ -116,7 +116,6 @@ class TestCliStatus:
         tmp_path,
     ):
         """Test status command shows project information."""
-        mock_validate.return_value = True
         with runner.isolated_filesystem(temp_dir=tmp_path):
             # Create config file
             (Path.cwd() / "nexus_config.json").write_text(
@@ -153,7 +152,7 @@ class TestCliStatus:
 
                 return asyncio.run(coro)
 
-            with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+            with patch("nexus_dev.cli.utils._run_async", side_effect=mock_run_async):
                 result = runner.invoke(cli, ["status"])
 
             assert "Test Project" in result.output
@@ -177,10 +176,10 @@ class TestCliIndex:
 
             assert "nexus_config.json not found" in result.output
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.ChunkerRegistry")
+    @patch("nexus_dev.cli.index.create_embedder")
+    @patch("nexus_dev.cli.index.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.index.ChunkerRegistry")
     def test_index_file_success(
         self,
         mock_registry,
@@ -234,7 +233,7 @@ class TestCliIndex:
 
                 return asyncio.run(coro)
 
-            with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+            with patch("nexus_dev.cli.utils._run_async", side_effect=mock_run_async):
                 result = runner.invoke(cli, ["index", "test.py", "-q"])
 
             assert result.exit_code == 0 or "Indexed" in result.output
@@ -258,9 +257,9 @@ class TestCliIndex:
 
             # Mock config with problematic pattern
             with (
-                patch("nexus_dev.cli.NexusConfig") as mock_config_cls,
-                patch("nexus_dev.cli.create_embedder") as mock_embedder_fn,
-                patch("nexus_dev.cli.NexusDatabase") as mock_db_cls,
+                patch("nexus_dev.cli.utils.NexusConfig") as mock_config_cls,
+                patch("nexus_dev.cli.index.create_embedder") as mock_embedder_fn,
+                patch("nexus_dev.cli.index.NexusDatabase") as mock_db_cls,
             ):
                 mock_config = MagicMock()
                 mock_config.project_id = "test"
@@ -284,7 +283,7 @@ class TestCliIndex:
 
                     return asyncio.run(coro)
 
-                with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+                with patch("nexus_dev.cli.utils._run_async", side_effect=mock_run_async):
                     result = runner.invoke(cli, ["index", ".", "-r"], input="y\n")
 
                 assert result.exit_code == 0
@@ -331,9 +330,9 @@ class TestCliVersion:
 class TestCliIndexMCP:
     """Test suite for nexus-index-mcp command."""
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
     def test_index_mcp_no_mcp_config(
         self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
     ):
@@ -348,9 +347,9 @@ class TestCliIndexMCP:
 
             assert "MCP config not found" in result.output
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
     def test_index_mcp_missing_options(
         self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
     ):
@@ -374,9 +373,9 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
     def test_index_mcp_invalid_json(
         self, mock_config_cls, mock_db_cls, mock_embedder_fn, runner, tmp_path
     ):
@@ -400,10 +399,10 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_single_server_success(
         self,
         mock_client_cls,
@@ -468,10 +467,10 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_all_servers(
         self,
         mock_client_cls,
@@ -532,10 +531,10 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_custom_config_path(
         self,
         mock_client_cls,
@@ -580,10 +579,10 @@ class TestCliIndexMCP:
             assert result.exit_code == 0
             assert "Indexing tools from: test" in result.output
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_server_not_found(
         self,
         mock_client_cls,
@@ -618,10 +617,10 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_connection_error(
         self,
         mock_client_cls,
@@ -670,10 +669,10 @@ class TestCliIndexMCP:
             # Cleanup
             mcp_config_path.unlink()
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_project_config_success(
         self,
         mock_client_cls,
@@ -732,10 +731,10 @@ class TestCliIndexMCP:
             assert result.exit_code == 0
             assert "Indexing tools from: project-server" in result.output
 
-    @patch("nexus_dev.cli.create_embedder")
-    @patch("nexus_dev.cli.NexusDatabase")
-    @patch("nexus_dev.cli.NexusConfig")
-    @patch("nexus_dev.cli.MCPClientManager")
+    @patch("nexus_dev.cli.mcp.create_embedder")
+    @patch("nexus_dev.cli.mcp.NexusDatabase")
+    @patch("nexus_dev.cli.utils.NexusConfig")
+    @patch("nexus_dev.cli.mcp.MCPClientManager")
     def test_index_mcp_priority(
         self,
         mock_client_cls,
