@@ -75,7 +75,11 @@ def _find_project_root(start_path: Path | None = None) -> Path | None:
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run async function in sync context."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    try:
+        return asyncio.run(coro)
+    except RuntimeError:
+        # If a loop is already running (e.g. in tests), use it
+        return asyncio.get_event_loop().run_until_complete(coro)
 
 
 def requires_config(f: Callable[..., Any]) -> Callable[..., Any]:
@@ -1108,11 +1112,8 @@ def export_command(project_id: str | None, output: Path | None) -> None:
             total_count = 0
 
             for doc_type, dirname in types_to_export:
-                # We use a hack: search for " " (space) which usually matches everything
-                # or rely on search implementation to support wildcards.
-                # Since vector search always returns something, we use a high limit
-                results = await db.search(
-                    query="*",  # Some vector DBs verify query length
+                # Retrieve all documents of the specific type for the project
+                results = await db.list_documents(
                     project_id=effective_project_id,
                     doc_type=doc_type,
                     limit=1000,
