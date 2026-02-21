@@ -62,6 +62,7 @@ cli.add_command(import_github_command)
 
 # Entry points for pyproject.toml scripts
 
+
 def init_command_entry() -> None:
     """Entry point for nexus-init."""
     cli(["init"])

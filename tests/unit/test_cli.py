@@ -116,7 +116,6 @@ class TestCliStatus:
         tmp_path,
     ):
         """Test status command shows project information."""
-        mock_validate.return_value = True
         with runner.isolated_filesystem(temp_dir=tmp_path):
             # Create config file
             (Path.cwd() / "nexus_config.json").write_text(
@@ -153,7 +152,7 @@ class TestCliStatus:
 
                 return asyncio.run(coro)
 
-            with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+            with patch("nexus_dev.cli.utils._run_async", side_effect=mock_run_async):
                 result = runner.invoke(cli, ["status"])
 
             assert "Test Project" in result.output
@@ -234,7 +233,7 @@ class TestCliIndex:
 
                 return asyncio.run(coro)
 
-            with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+            with patch("nexus_dev.cli.utils._run_async", side_effect=mock_run_async):
                 result = runner.invoke(cli, ["index", "test.py", "-q"])
 
             assert result.exit_code == 0 or "Indexed" in result.output
@@ -284,7 +283,7 @@ class TestCliIndex:
 
                     return asyncio.run(coro)
 
-                with patch("nexus_dev.cli._run_async", side_effect=mock_run_async):
+                with patch("nexus_dev.cli.utils._run_async", side_effect=mock_run_async):
                     result = runner.invoke(cli, ["index", ".", "-r"], input="y\n")
 
                 assert result.exit_code == 0
