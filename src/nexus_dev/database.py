@@ -313,10 +313,16 @@ class NexusDatabase:
         def _sync_upsert() -> list[str]:
             # Delete existing documents
             ids = [doc.id for doc in docs]
-            for doc_id in ids:
+            # Batch delete to avoid N+1 queries
+            # Process in batches to avoid query length limits
+            batch_size = 1000
+            for i in range(0, len(ids), batch_size):
+                batch_ids = ids[i : i + batch_size]
+                # Escape single quotes in IDs to prevent SQL injection/errors
+                escaped_ids = [self._escape_sql_string(str(doc_id)) for doc_id in batch_ids]
+                id_list = ", ".join(f"'{eid}'" for eid in escaped_ids)
                 try:
-                    escaped_id = self._escape_sql_string(doc_id)
-                    table.delete(f"id = '{escaped_id}'")
+                    table.delete(f"id IN ({id_list})")
                 except Exception:
                     pass
 
