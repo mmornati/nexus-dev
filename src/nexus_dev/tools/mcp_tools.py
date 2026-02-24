@@ -64,11 +64,29 @@ async def search_tools(
     server: str | None = None,
     limit: int = 5,
 ) -> str:
-    """Search for MCP tools matching a description.
+    """Find the RIGHT tool from other MCP servers to complete a task.
 
-    Use this tool to find other MCP tools when you need to perform an action
-    but don't know which tool to use. Returns tool names, descriptions, and
-    parameter schemas.
+    This is your FIRST STEP when you need to do something outside Nexus-Dev:
+    1. Use search_tools('<action>') to find available tools
+    2. Use get_tool_schema(server, tool) to see parameters
+    3. Use invoke_tool(server, tool, arguments) to execute
+
+    Example workflow:
+    1. search_tools('create GitHub issue') → Returns: github.create_issue with schema
+    2. get_tool_schema('github', 'create_issue') → Returns required parameters
+    3. invoke_tool(
+         server='github',
+         tool='create_issue',
+         arguments={
+             'owner': 'myorg',
+             'repo': 'myrepo',
+             'title': 'Bug fix',
+             'body': 'Fixed the issue'
+         }
+       )
+
+    CRITICAL: Never try to call external tools directly (e.g., github.create_issue)!
+    The tool will not exist and will fail. Always use this gateway workflow.
 
     Args:
         query: Natural language description of what you want to do.
