@@ -202,10 +202,29 @@ async def invoke_tool(
     tool: str,
     arguments: dict[str, Any] | None = None,
 ) -> str:
-    """Invoke a tool on a backend MCP server.
+    """Execute a tool on a backend MCP server through the Nexus-Dev gateway.
 
-    Use search_tools first to find the right tool, then use this
-    to execute it.
+    This is STEP 3 of the gateway workflow:
+    1. First: search_tools('<action>') to find the right tool
+    2. Then: get_tool_schema(server, tool) to see required parameters
+    3. Finally: invoke_tool(server, tool, arguments) to execute
+
+    Example workflow:
+    1. search_tools('create GitHub issue') → Returns: github.create_issue
+    2. get_tool_schema('github', 'create_issue') → Returns parameters
+    3. invoke_tool(
+         server='github',           # NOT 'github.create_issue'!
+         tool='create_issue',      # Tool name WITHOUT server prefix
+         arguments={
+             'owner': 'myorg',
+             'repo': 'myrepo',
+             'title': 'Bug fix',
+             'body': 'Fixed the issue'
+         }
+       )
+
+    CRITICAL: Pass server and tool as SEPARATE parameters!
+    Do NOT combine them like invoke_tool('github.create_issue', {...})
 
     Args:
         server: MCP server name (e.g., "github", "homeassistant")
@@ -214,18 +233,6 @@ async def invoke_tool(
 
     Returns:
         Tool execution result.
-
-    Example:
-        invoke_tool(
-            server="github",
-            tool="create_issue",
-            arguments={
-                "owner": "myorg",
-                "repo": "myrepo",
-                "title": "Bug fix",
-                "body": "Fixed the thing"
-            }
-        )
     """
     mcp_config = get_mcp_config()
     if not mcp_config:
