@@ -22,6 +22,69 @@
 - ✅ Before suggesting changes or refactors
 - ✅ When unsure about existing code patterns
 
+## ⚠️ CRITICAL: Gateway Tool Usage
+
+> **MANDATORY**: When you need to use tools from other MCP servers (GitHub, Home Assistant, Filesystem, etc), you MUST use the Nexus-Dev gateway.
+
+### Why This Matters
+
+Nexus-Dev acts as a gateway to reduce the number of tools you see. Instead of 50+ tools, you have ~20 core tools. To access external tools:
+
+### Correct Workflow (3 Steps)
+
+1. **Search** for the right tool:
+   ```python
+   search_tools("create a GitHub issue")
+   ```
+
+2. **Get** the tool schema (parameters):
+   ```python
+   get_tool_schema(server="github", tool="create_issue")
+   ```
+
+3. **Invoke** the tool:
+   ```python
+   invoke_tool(
+       server="github",
+       tool="create_issue",
+       arguments={
+           "owner": "myorg",
+           "repo": "myrepo",
+           "title": "Bug fix",
+           "body": "Fixed the thing"
+       }
+   )
+   ```
+
+### Common Mistakes (DO NOT DO)
+
+❌ **WRONG** - Trying to use external tools directly:
+```python
+# These tools don't exist in Nexus-Dev!
+github.create_issue(...)    # ❌ Will fail!
+homeassistant.turn_on(...)  # ❌ Will fail!
+filesystem.read_file(...)   # ❌ Will fail!
+```
+
+❌ **WRONG** - Passing tool name with server prefix:
+```python
+invoke_tool("github.create_issue", {...})  # ❌ Wrong!
+invoke_tool(server="github.create_issue", ...)  # ❌ Wrong!
+```
+
+✅ **CORRECT** - Server and tool as SEPARATE strings:
+```python
+invoke_tool(server="github", tool="create_issue", {...})  # ✅ Correct!
+```
+
+### Quick Reference
+
+| Tool | Purpose |
+|------|---------|
+| `search_tools` | Find available tools from external servers |
+| `get_tool_schema` | See what parameters a tool needs |
+| `invoke_tool` | Execute a tool on an external server |
+
 ## Project Overview
 
 <!-- Describe your project here -->
