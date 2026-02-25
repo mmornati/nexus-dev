@@ -20,7 +20,8 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
-from ..mcp_config import MCPServerConfig
+from ..mcp_config import CacheSettings, MCPServerConfig
+from .cache import ToolCache, is_mutation_tool
 
 logger = logging.getLogger(__name__)
 
@@ -334,11 +335,40 @@ class MCPConnection:
 class ConnectionManager:
     """Manages pool of MCP connections with graceful shutdown support."""
 
-    def __init__(self, default_max_concurrent: int = 5, shutdown_timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        default_max_concurrent: int = 5,
+        shutdown_timeout: float = 5.0,
+        cache_settings: CacheSettings | None = None,
+    ) -> None:
         self._connections: dict[str, MCPConnection] = {}
         self._lock = asyncio.Lock()
         self._default_max_concurrent = default_max_concurrent
         self._shutdown_timeout = shutdown_timeout
+        self._cache: ToolCache | None = None
+        self._cache_settings = cache_settings
+        if cache_settings and cache_settings.enabled:
+            self._cache = ToolCache(
+                ttl_seconds=cache_settings.ttl_seconds,
+                max_entries=cache_settings.max_entries,
+            )
+            logger.info(
+                "[Cache] Enabled with TTL=%ds, max_entries=%d",
+                cache_settings.ttl_seconds,
+                cache_settings.max_entries,
+            )
+
+    def _is_cache_enabled(self, config: MCPServerConfig) -> bool:
+        """Check if caching is enabled for this server."""
+        if self._cache is None:
+            return False
+        if config.cache_enabled is not None:
+            return config.cache_enabled
+        return self._cache_settings.enabled if self._cache_settings else False
+
+    def _get_cache(self) -> ToolCache | None:
+        """Get the cache if it's enabled."""
+        return self._cache
 
     def _get_max_concurrent(self, config: MCPServerConfig) -> int:
         """Get max concurrent setting for a server (per-server or default)."""
@@ -421,5 +451,21 @@ class ConnectionManager:
             MCPConnectionError: If connection fails after retries.
             MCPTimeoutError: If tool invocation times out.
         """
+        cache = self._get_cache()
+        # Check cache first
+        if cache and self._is_cache_enabled(config) and not is_mutation_tool(tool):
+            cached_result = cache.get(name, tool, arguments)
+            if cached_result is not None:
+                logger.debug("[%s] Cache hit for %s", name, tool)
+                return cached_result
+
+        # Execute the tool
         connection = await self.get_connection(name, config)
-        return await connection.invoke_with_timeout(tool, arguments)
+        result = await connection.invoke_with_timeout(tool, arguments)
+
+        # Cache the result if caching is enabled and tool is not a mutation
+        if cache and self._is_cache_enabled(config) and not is_mutation_tool(tool):
+            cache.set(name, tool, arguments, result)
+            logger.debug("[%s] Cached result for %s", name, tool)
+
+        return result

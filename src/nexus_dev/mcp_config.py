@@ -24,6 +24,16 @@ class MCPServerConfig:
     timeout: float = 30.0  # Tool execution timeout
     connect_timeout: float = 10.0  # Connection timeout
     max_concurrent: int | None = None  # Max concurrent invocations (None = use gateway default)
+    cache_enabled: bool | None = None  # Override gateway cache setting (None = use gateway default)
+
+
+@dataclass
+class CacheSettings:
+    """Cache configuration for tool invocation results."""
+
+    enabled: bool = True
+    ttl_seconds: float = 300.0  # 5 minutes
+    max_entries: int = 1000
 
 
 @dataclass
@@ -33,6 +43,7 @@ class GatewaySettings:
     default_timeout: float = 30.0
     max_concurrent_connections: int = 5
     shutdown_timeout: float = 5.0  # Graceful shutdown timeout
+    cache: CacheSettings = field(default_factory=CacheSettings)
 
 
 @dataclass
@@ -80,6 +91,7 @@ class MCPConfig:
                 timeout=cfg.get("timeout", 30.0),
                 connect_timeout=cfg.get("connect_timeout", 10.0),
                 max_concurrent=cfg.get("max_concurrent"),
+                cache_enabled=cfg.get("cache_enabled"),
             )
             for name, cfg in data["servers"].items()
         }
@@ -88,10 +100,17 @@ class MCPConfig:
         active_profile = data.get("active_profile", "default")
 
         gateway_data = data.get("gateway", {})
+        gateway_cache_data = gateway_data.get("cache", {})
+        gateway_cache = CacheSettings(
+            enabled=gateway_cache_data.get("enabled", True),
+            ttl_seconds=gateway_cache_data.get("ttl_seconds", 300.0),
+            max_entries=gateway_cache_data.get("max_entries", 1000),
+        )
         gateway = GatewaySettings(
             default_timeout=gateway_data.get("default_timeout", 30.0),
             max_concurrent_connections=gateway_data.get("max_concurrent_connections", 5),
             shutdown_timeout=gateway_data.get("shutdown_timeout", 5.0),
+            cache=gateway_cache,
         )
 
         return cls(
@@ -216,6 +235,7 @@ class MCPConfig:
                         "timeout": server.timeout,
                         "connect_timeout": server.connect_timeout,
                         "max_concurrent": server.max_concurrent,
+                        "cache_enabled": server.cache_enabled,
                     }.items()
                     if v is not None
                 }
@@ -227,6 +247,11 @@ class MCPConfig:
                 "default_timeout": self.gateway.default_timeout,
                 "max_concurrent_connections": self.gateway.max_concurrent_connections,
                 "shutdown_timeout": self.gateway.shutdown_timeout,
+                "cache": {
+                    "enabled": self.gateway.cache.enabled,
+                    "ttl_seconds": self.gateway.cache.ttl_seconds,
+                    "max_entries": self.gateway.cache.max_entries,
+                },
             },
         }
 

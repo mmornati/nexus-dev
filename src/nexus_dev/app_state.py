@@ -146,6 +146,7 @@ def get_connection_manager() -> ConnectionManager:
             _connection_manager = ConnectionManager(
                 default_max_concurrent=mcp_config.gateway.max_concurrent_connections,
                 shutdown_timeout=mcp_config.gateway.shutdown_timeout,
+                cache_settings=mcp_config.gateway.cache,
             )
         else:
             _connection_manager = ConnectionManager()
