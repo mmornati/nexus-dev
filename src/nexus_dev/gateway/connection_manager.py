@@ -20,8 +20,9 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
-from ..mcp_config import CacheSettings, MCPServerConfig
+from ..mcp_config import CacheSettings, MCPServerConfig, SummarizeSettings
 from .cache import ToolCache, is_mutation_tool
+from .summarizer import OutputSummarizer, serialize_for_summarization
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +341,7 @@ class ConnectionManager:
         default_max_concurrent: int = 5,
         shutdown_timeout: float = 5.0,
         cache_settings: CacheSettings | None = None,
+        summarize_settings: SummarizeSettings | None = None,
     ) -> None:
         self._connections: dict[str, MCPConnection] = {}
         self._lock = asyncio.Lock()
@@ -347,6 +349,7 @@ class ConnectionManager:
         self._shutdown_timeout = shutdown_timeout
         self._cache: ToolCache | None = None
         self._cache_settings = cache_settings
+        self._summarize_settings = summarize_settings
         if cache_settings and cache_settings.enabled:
             self._cache = ToolCache(
                 ttl_seconds=cache_settings.ttl_seconds,
@@ -369,6 +372,12 @@ class ConnectionManager:
     def _get_cache(self) -> ToolCache | None:
         """Get the cache if it's enabled."""
         return self._cache
+
+    def _get_summarize_settings(self, config: MCPServerConfig) -> SummarizeSettings:
+        """Get summarize settings for this server."""
+        if config.summarize is not None:
+            return config.summarize
+        return SummarizeSettings()
 
     def _get_max_concurrent(self, config: MCPServerConfig) -> int:
         """Get max concurrent setting for a server (per-server or default)."""
@@ -467,5 +476,18 @@ class ConnectionManager:
         if cache and self._is_cache_enabled(config) and not is_mutation_tool(tool):
             cache.set(name, tool, arguments, result)
             logger.debug("[%s] Cached result for %s", name, tool)
+
+        # Summarize the result to reduce token usage
+        summarize_settings = self._get_summarize_settings(config)
+        if summarize_settings.enabled:
+            summarizer = OutputSummarizer(
+                enabled=summarize_settings.enabled,
+                max_list_items=summarize_settings.max_list_items,
+                max_output_chars=summarize_settings.max_output_chars,
+            )
+            serialized = serialize_for_summarization(result)
+            summarized = summarizer.summarize(serialized)
+            logger.debug("[%s] Summarized result for %s", name, tool)
+            return summarized
 
         return result
