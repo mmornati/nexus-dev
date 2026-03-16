@@ -51,6 +51,7 @@ from .tools.search import (
     search_lessons,
     smart_search,
 )
+from .tools.system_prompts import get_gateway_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,7 @@ mcp.tool()(get_project_context)
 mcp.tool()(list_agents)
 mcp.tool()(ask_agent)
 mcp.tool()(refresh_agents)
+mcp.tool()(get_gateway_prompt)
 
 # Register Resources
 mcp.resource("mcp://nexus-dev/active-tools")(get_active_tools_resource)
