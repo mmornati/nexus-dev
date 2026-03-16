@@ -25,6 +25,7 @@ class MCPServerConfig:
     connect_timeout: float = 10.0  # Connection timeout
     max_concurrent: int | None = None  # Max concurrent invocations (None = use gateway default)
     cache_enabled: bool | None = None  # Override gateway cache setting (None = use gateway default)
+    summarize: SummarizeSettings | None = None  # Override gateway summarize setting
 
 
 @dataclass
@@ -37,6 +38,15 @@ class CacheSettings:
 
 
 @dataclass
+class SummarizeSettings:
+    """Summarization configuration for tool outputs."""
+
+    enabled: bool = True
+    max_list_items: int = 10
+    max_output_chars: int = 500
+
+
+@dataclass
 class GatewaySettings:
     """Global gateway configuration settings."""
 
@@ -44,6 +54,7 @@ class GatewaySettings:
     max_concurrent_connections: int = 5
     shutdown_timeout: float = 5.0  # Graceful shutdown timeout
     cache: CacheSettings = field(default_factory=CacheSettings)
+    summarize: SummarizeSettings = field(default_factory=SummarizeSettings)
 
 
 @dataclass
@@ -79,6 +90,16 @@ class MCPConfig:
 
         cls.validate(data)
 
+        def _load_summarize_settings(data: dict[str, Any] | None) -> SummarizeSettings | None:
+            """Load summarize settings from dict."""
+            if data is None:
+                return None
+            return SummarizeSettings(
+                enabled=data.get("enabled", True),
+                max_list_items=data.get("max_list_items", 10),
+                max_output_chars=data.get("max_output_chars", 500),
+            )
+
         servers = {
             name: MCPServerConfig(
                 command=cfg.get("command"),
@@ -92,6 +113,7 @@ class MCPConfig:
                 connect_timeout=cfg.get("connect_timeout", 10.0),
                 max_concurrent=cfg.get("max_concurrent"),
                 cache_enabled=cfg.get("cache_enabled"),
+                summarize=_load_summarize_settings(cfg.get("summarize")),
             )
             for name, cfg in data["servers"].items()
         }
@@ -106,11 +128,18 @@ class MCPConfig:
             ttl_seconds=gateway_cache_data.get("ttl_seconds", 300.0),
             max_entries=gateway_cache_data.get("max_entries", 1000),
         )
+        gateway_summarize_data = gateway_data.get("summarize", {})
+        gateway_summarize = SummarizeSettings(
+            enabled=gateway_summarize_data.get("enabled", True),
+            max_list_items=gateway_summarize_data.get("max_list_items", 10),
+            max_output_chars=gateway_summarize_data.get("max_output_chars", 500),
+        )
         gateway = GatewaySettings(
             default_timeout=gateway_data.get("default_timeout", 30.0),
             max_concurrent_connections=gateway_data.get("max_concurrent_connections", 5),
             shutdown_timeout=gateway_data.get("shutdown_timeout", 5.0),
             cache=gateway_cache,
+            summarize=gateway_summarize,
         )
 
         return cls(
@@ -218,6 +247,15 @@ class MCPConfig:
         """
         path = Path(path)
 
+        def _serialize_summarize(s: SummarizeSettings | None) -> dict[str, Any] | None:
+            if s is None:
+                return None
+            return {
+                "enabled": s.enabled,
+                "max_list_items": s.max_list_items,
+                "max_output_chars": s.max_output_chars,
+            }
+
         # Convert to dictionary format
         data = {
             "version": self.version,
@@ -236,6 +274,7 @@ class MCPConfig:
                         "connect_timeout": server.connect_timeout,
                         "max_concurrent": server.max_concurrent,
                         "cache_enabled": server.cache_enabled,
+                        "summarize": _serialize_summarize(server.summarize),
                     }.items()
                     if v is not None
                 }
@@ -251,6 +290,11 @@ class MCPConfig:
                     "enabled": self.gateway.cache.enabled,
                     "ttl_seconds": self.gateway.cache.ttl_seconds,
                     "max_entries": self.gateway.cache.max_entries,
+                },
+                "summarize": {
+                    "enabled": self.gateway.summarize.enabled,
+                    "max_list_items": self.gateway.summarize.max_list_items,
+                    "max_output_chars": self.gateway.summarize.max_output_chars,
                 },
             },
         }
