@@ -24,7 +24,9 @@ class MCPServerConfig:
     timeout: float = 30.0  # Tool execution timeout
     connect_timeout: float = 10.0  # Connection timeout
     max_concurrent: int | None = None  # Max concurrent invocations (None = use gateway default)
-    cache_enabled: bool | None = None  # Override gateway cache setting (None = use gateway default)
+    cache: CacheSettings | None = (
+        None  # Override gateway cache setting (None = use gateway default)
+    )
     summarize: SummarizeSettings | None = None  # Override gateway summarize setting
 
 
@@ -90,6 +92,16 @@ class MCPConfig:
 
         cls.validate(data)
 
+        def _load_cache_settings(data: dict[str, Any] | None) -> CacheSettings | None:
+            """Load cache settings from dict."""
+            if data is None:
+                return None
+            return CacheSettings(
+                enabled=data.get("enabled", True),
+                ttl_seconds=data.get("ttl_seconds", 300.0),
+                max_entries=data.get("max_entries", 1000),
+            )
+
         def _load_summarize_settings(data: dict[str, Any] | None) -> SummarizeSettings | None:
             """Load summarize settings from dict."""
             if data is None:
@@ -112,7 +124,7 @@ class MCPConfig:
                 timeout=cfg.get("timeout", 30.0),
                 connect_timeout=cfg.get("connect_timeout", 10.0),
                 max_concurrent=cfg.get("max_concurrent"),
-                cache_enabled=cfg.get("cache_enabled"),
+                cache=_load_cache_settings(cfg.get("cache")),
                 summarize=_load_summarize_settings(cfg.get("summarize")),
             )
             for name, cfg in data["servers"].items()
@@ -247,6 +259,15 @@ class MCPConfig:
         """
         path = Path(path)
 
+        def _serialize_cache(s: CacheSettings | None) -> dict[str, Any] | None:
+            if s is None:
+                return None
+            return {
+                "enabled": s.enabled,
+                "ttl_seconds": s.ttl_seconds,
+                "max_entries": s.max_entries,
+            }
+
         def _serialize_summarize(s: SummarizeSettings | None) -> dict[str, Any] | None:
             if s is None:
                 return None
@@ -273,7 +294,7 @@ class MCPConfig:
                         "timeout": server.timeout,
                         "connect_timeout": server.connect_timeout,
                         "max_concurrent": server.max_concurrent,
-                        "cache_enabled": server.cache_enabled,
+                        "cache": _serialize_cache(server.cache),
                         "summarize": _serialize_summarize(server.summarize),
                     }.items()
                     if v is not None

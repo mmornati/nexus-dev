@@ -2,6 +2,52 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Nexus-Dev MCP Configuration",
     "type": "object",
+    "definitions": {
+        "cacheSettings": {
+            "type": "object",
+            "description": "Cache configuration for tool invocation results",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "ttl_seconds": {
+                    "type": "number",
+                    "description": "Time to live for cache entries in seconds",
+                    "default": 300,
+                    "minimum": 1
+                },
+                "max_entries": {
+                    "type": "integer",
+                    "description": "Maximum number of cache entries",
+                    "default": 1000,
+                    "minimum": 1
+                }
+            }
+        },
+        "summarizeSettings": {
+            "type": "object",
+            "description": "Summarization configuration for tool outputs",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true
+                },
+                "max_list_items": {
+                    "type": "integer",
+                    "description": "Maximum number of items to show in lists",
+                    "default": 10,
+                    "minimum": 1
+                },
+                "max_output_chars": {
+                    "type": "integer",
+                    "description": "Maximum number of characters in output",
+                    "default": 500,
+                    "minimum": 1
+                }
+            }
+        }
+    },
     "properties": {
         "version": {
             "type": "string",
@@ -75,6 +121,14 @@
                         "type": "integer",
                         "description": "Maximum concurrent invocations for this server (overrides gateway default)",
                         "minimum": 1
+                    },
+                    "cache": {
+                        "$ref": "#/definitions/cacheSettings",
+                        "description": "Server-specific cache settings (overrides gateway default)"
+                    },
+                    "summarize": {
+                        "$ref": "#/definitions/summarizeSettings",
+                        "description": "Server-specific summarize settings (overrides gateway default)"
                     }
                 },
                 "allOf": [
@@ -161,6 +215,14 @@
                     "description": "Graceful shutdown timeout in seconds",
                     "default": 5,
                     "minimum": 0
+                },
+                "cache": {
+                    "$ref": "#/definitions/cacheSettings",
+                    "description": "Global cache settings"
+                },
+                "summarize": {
+                    "$ref": "#/definitions/summarizeSettings",
+                    "description": "Global summarize settings"
                 }
             }
         },

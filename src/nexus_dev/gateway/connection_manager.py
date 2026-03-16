@@ -365,8 +365,8 @@ class ConnectionManager:
         """Check if caching is enabled for this server."""
         if self._cache is None:
             return False
-        if config.cache_enabled is not None:
-            return config.cache_enabled
+        if config.cache is not None:
+            return config.cache.enabled
         return self._cache_settings.enabled if self._cache_settings else False
 
     def _get_cache(self) -> ToolCache | None:
