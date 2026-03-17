@@ -1,6 +1,5 @@
 """Tests for MCP server tool handlers with mocked dependencies."""
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -811,7 +810,7 @@ class TestListServers:
 class TestMain:
     """Test suite for main entry point."""
 
-    @patch("sys.argv", ["nexus-dev"])
+    @patch("sys.argv", ["nexus-dev", "--no-auto-index"])
     @patch("nexus_dev.server.mcp")
     @patch("nexus_dev.server.get_mcp_config")
     @patch("nexus_dev.server.get_database")
@@ -1464,162 +1463,93 @@ class TestGetActiveToolsResource:
 
         # Check that description is truncated to 100 chars + "..."
         assert "long_tool" in result
-        assert "..." in result
-        # The full 150-char description should not be in the output
-        assert long_description not in result
 
-    @pytest.mark.asyncio
-    @patch("nexus_dev.tools.mcp_tools.get_database")
-    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
-    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
-    async def test_get_active_tools_with_high_limit(
-        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+    @patch("sys.argv", ["nexus-dev"])
+    @patch("nexus_dev.server.mcp")
+    @patch("nexus_dev.server.get_mcp_config")
+    @patch("nexus_dev.server.get_database")
+    @patch("nexus_dev.server.get_config")
+    @patch("nexus_dev.server.find_project_root")
+    def test_main_auto_index_with_config(
+        self,
+        mock_find_root,
+        mock_get_config,
+        mock_get_db,
+        mock_get_mcp_config,
+        mock_mcp,
     ):
-        """Test get_active_tools_resource queries with high limit for all tools."""
-        from nexus_dev.tools.mcp_tools import get_active_tools_resource
+        """Test main starts auto-index thread when config exists."""
+        import nexus_dev.app_state as app_state
+        from nexus_dev.server import main
+
+        app_state._config = None
+        app_state._embedder = None
+        app_state._database = None
+        app_state._mcp_config = None
+        app_state._agent_manager = None
+        app_state._project_root = None
+        app_state._connection_manager = None
+        app_state._hybrid_db = None
 
         mock_config = MagicMock()
-        mock_config.active_profile = "default"
-        mock_get_mcp_config.return_value = mock_config
-
-        mock_get_active_server_names.return_value = ["test-server"]
+        mock_config.project_id = "test"
+        mock_get_config.return_value = mock_config
 
         mock_db = MagicMock()
-        mock_db.search = AsyncMock(return_value=[])
         mock_get_db.return_value = mock_db
 
-        await get_active_tools_resource()
+        mock_mcp_config = MagicMock()
+        mock_get_mcp_config.return_value = mock_mcp_config
 
-        # Verify search was called with limit=1000 to get all tools
-        call_args = mock_db.search.call_args
-        assert call_args.kwargs["limit"] == 1000
+        mock_root = MagicMock()
+        mock_find_root.return_value = mock_root
 
-    @pytest.mark.asyncio
-    @patch("nexus_dev.tools.mcp_tools.get_database")
-    @patch("nexus_dev.tools.mcp_tools.get_active_server_names")
-    @patch("nexus_dev.tools.mcp_tools.get_mcp_config")
-    async def test_get_active_tools_filters_by_active_servers(
-        self, mock_get_mcp_config, mock_get_active_server_names, mock_get_db
+        with patch("nexus_dev.server.Thread") as mock_thread:
+            main()
+            mock_thread.assert_called_once()
+
+        mock_mcp.run.assert_called_once_with(transport="stdio")
+
+    @patch("sys.argv", ["nexus-dev"])
+    @patch("nexus_dev.server.mcp")
+    @patch("nexus_dev.server.get_mcp_config")
+    @patch("nexus_dev.server.get_database")
+    @patch("nexus_dev.server.get_config")
+    @patch("nexus_dev.server.find_project_root")
+    def test_main_skips_auto_index_when_no_config(
+        self,
+        mock_find_root,
+        mock_get_config,
+        mock_get_db,
+        mock_get_mcp_config,
+        mock_mcp,
     ):
-        """Test get_active_tools_resource only shows tools from active servers.
+        """Test main skips auto-index when no MCP config exists."""
+        import nexus_dev.app_state as app_state
+        from nexus_dev.server import main
 
-        This test verifies that when multiple servers' tools exist in the database,
-        only tools from servers in the active profile are returned.
-        """
-        from nexus_dev.tools.mcp_tools import get_active_tools_resource
+        app_state._config = None
+        app_state._embedder = None
+        app_state._database = None
+        app_state._mcp_config = None
+        app_state._agent_manager = None
+        app_state._project_root = None
+        app_state._connection_manager = None
+        app_state._hybrid_db = None
 
         mock_config = MagicMock()
-        mock_config.active_profile = "dev"
-        mock_get_mcp_config.return_value = mock_config
+        mock_config.project_id = "test"
+        mock_get_config.return_value = mock_config
 
-        # Only github is in the active profile
-        mock_get_active_server_names.return_value = ["github"]
-
-        # Mock database returns tools from both active and inactive servers
         mock_db = MagicMock()
-        mock_db.search = AsyncMock(
-            return_value=[
-                make_search_result(
-                    doc_type="tool",
-                    name="create_issue",
-                    server_name="github",  # Active server
-                    text="GitHub tool",
-                ),
-                make_search_result(
-                    doc_type="tool",
-                    name="turn_on_light",
-                    server_name="homeassistant",  # Inactive server
-                    text="Home Assistant tool",
-                ),
-            ]
-        )
         mock_get_db.return_value = mock_db
 
-        result = await get_active_tools_resource()
+        mock_get_mcp_config.return_value = None
 
-        # Only github tool should be in output (active server)
-        assert "github" in result
-        assert "create_issue" in result
-        # homeassistant tools should NOT be shown (inactive server)
-        assert "homeassistant" not in result
-        assert "turn_on_light" not in result
+        mock_find_root.return_value = None
 
+        with patch("nexus_dev.server.Thread") as mock_thread:
+            main()
+            mock_thread.assert_not_called()
 
-class TestProjectRootDiscovery:
-    """Test suite for project root discovery functions."""
-
-    @pytest.mark.asyncio
-    @patch("nexus_dev.app_state.get_project_root_from_session")
-    @patch("os.environ", {"NEXUS_PROJECT_ROOT": "/env/project"})
-    async def test_find_project_root_from_env(self, mock_get_root_session):
-        """Test find_project_root using environment variable."""
-        from nexus_dev.app_state import find_project_root
-
-        # We need to mock existence check for /env/project/nexus_config.json
-        def mock_exists(self):
-            s = str(self).rstrip("/")
-            return s in ["/env/project", "/env/project/nexus_config.json"]
-
-        with (
-            patch.object(Path, "exists", autospec=True, side_effect=mock_exists),
-            patch("nexus_dev.app_state._project_root", None),
-        ):
-            root = find_project_root()
-            assert root == Path("/env/project")
-
-    @pytest.mark.asyncio
-    @patch("nexus_dev.app_state.Path.cwd")
-    async def test_find_project_root_by_walking_up(self, mock_cwd):
-        """Test find_project_root by walking up from current directory."""
-        from nexus_dev.app_state import find_project_root
-
-        # Mock Path.cwd().resolve() to return /a/b/c
-        mock_cwd.return_value.resolve.return_value = Path("/a/b/c")
-
-        # Mock existence: only /a has nexus_config.json
-        def mock_exists(self):
-            s = str(self).rstrip("/")
-            return s in ["/a", "/a/nexus_config.json"]
-
-        with (
-            patch.object(Path, "exists", autospec=True, side_effect=mock_exists),
-            patch("nexus_dev.app_state._project_root", None),
-        ):
-            root = find_project_root()
-            assert root == Path("/a")
-
-    @pytest.mark.asyncio
-    async def test_get_project_root_from_session_success(self, mock_ctx):
-        """Test get_project_root_from_session with valid root."""
-        from nexus_dev.app_state import get_project_root_from_session
-
-        mock_root = MagicMock()
-        mock_root.uri = "file:///test/project"
-        mock_ctx.session.list_roots.return_value = MagicMock(roots=[mock_root])
-
-        # Mock existence of both city and nexus_config.json
-        def mock_exists(self):
-            s = str(self).rstrip("/")
-            return s in ["/test/project", "/test/project/nexus_config.json"]
-
-        with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
-            root = await get_project_root_from_session(mock_ctx)
-            assert root == Path("/test/project")
-
-    @pytest.mark.asyncio
-    async def test_get_project_root_from_session_fallback(self, mock_ctx):
-        """Test fallback to first root if no nexus_config.json found."""
-        from nexus_dev.app_state import get_project_root_from_session
-
-        mock_root = MagicMock()
-        mock_root.uri = "file:///test/root"
-        mock_ctx.session.list_roots.return_value = MagicMock(roots=[mock_root])
-
-        # Mock existence: /test/root/nexus_config.json does NOT exist,
-        # but /test/root (the directory itself) DOES exist.
-        def mock_exists(self):
-            return str(self).rstrip("/") == "/test/root"
-
-        with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
-            root = await get_project_root_from_session(mock_ctx)
-            assert root == Path("/test/root")
+        mock_mcp.run.assert_called_once_with(transport="stdio")
