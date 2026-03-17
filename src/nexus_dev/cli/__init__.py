@@ -13,6 +13,7 @@ import sys
 import click
 
 from nexus_dev.cli.agent import agent_group
+from nexus_dev.cli.gateway import gateway_group
 from nexus_dev.cli.github import import_github_command
 from nexus_dev.cli.index import (
     clean_command,
@@ -58,6 +59,7 @@ cli.add_command(mcp_group)
 cli.add_command(index_mcp_command)
 cli.add_command(agent_group)
 cli.add_command(import_github_command)
+cli.add_command(gateway_group)
 
 
 # Entry points for pyproject.toml scripts
