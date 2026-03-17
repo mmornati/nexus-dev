@@ -5,10 +5,13 @@ This module implements the MCP server using FastMCP, exposing tools.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import signal
 import sys
 from pathlib import Path
+from threading import Thread
 from types import FrameType
 
 from .agents import AgentManager
@@ -20,6 +23,7 @@ from .app_state import (
     mcp,
     set_agent_manager,
 )
+from .mcp_client import MCPClientManager, MCPServerConnection
 from .tools.agents import ask_agent, list_agents, refresh_agents, register_agent_tools
 from .tools.context import get_recent_context
 from .tools.github import import_github_issues
@@ -54,6 +58,100 @@ from .tools.search import (
 from .tools.system_prompts import get_gateway_prompt
 
 logger = logging.getLogger(__name__)
+
+
+async def _auto_index_mcp_tools() -> None:
+    """Automatically index MCP tools from configured servers.
+
+    This function runs on server startup to index tools from all active
+    MCP servers defined in the MCP configuration file.
+    """
+    from .database import Document, DocumentType
+    from .embeddings import create_embedder
+
+    mcp_config = get_mcp_config()
+    if not mcp_config:
+        logger.debug("No MCP config found, skipping auto-index")
+        return
+
+    config = get_config()
+    if config is None:
+        from .config import NexusConfig
+
+        config = NexusConfig.create_new("default")
+
+    embedder = create_embedder(config)
+    database = get_database()
+
+    active_servers = mcp_config.get_active_servers()
+    if not active_servers:
+        logger.debug("No active MCP servers found, skipping auto-index")
+        return
+
+    server_names = [
+        name for name, srv_cfg in mcp_config.servers.items() if srv_cfg in active_servers
+    ]
+    logger.info("Found MCP config: %s", mcp_config)
+    logger.info("Auto-indexing MCP tools from %d servers...", len(server_names))
+
+    async with MCPClientManager() as client:
+        total_tools = 0
+        servers_indexed = 0
+
+        for name in server_names:
+            server_config = mcp_config.servers.get(name)
+            if not server_config or not server_config.enabled:
+                continue
+
+            logger.debug("Indexing tools from server: %s", name)
+
+            connection = MCPServerConnection(
+                name=name,
+                command=server_config.command or "",
+                args=server_config.args,
+                env=server_config.env,
+                transport=server_config.transport,
+                url=server_config.url,
+                headers=server_config.headers,
+                timeout=server_config.timeout,
+            )
+
+            try:
+                tools = await client.get_tools(connection)
+                logger.debug("Found %d tools from %s", len(tools), name)
+
+                for tool in tools:
+                    text = f"{name}.{tool.name}: {tool.description}"
+                    vector = await embedder.embed(text)
+
+                    doc = Document(
+                        id=f"{name}:{tool.name}",
+                        text=text,
+                        vector=vector,
+                        project_id=f"{config.project_id}_mcp_tools",
+                        file_path=f"mcp://{name}/{tool.name}",
+                        doc_type=DocumentType.TOOL,
+                        chunk_type="tool",
+                        language="mcp",
+                        name=tool.name,
+                        start_line=0,
+                        end_line=0,
+                        server_name=name,
+                        parameters_schema=json.dumps(tool.input_schema),
+                    )
+
+                    await database.upsert_document(doc)
+
+                total_tools += len(tools)
+                servers_indexed += 1
+                logger.info("Indexed %d tools from %s", len(tools), name)
+
+            except Exception as e:
+                logger.warning("Failed to index tools from %s: %s", name, e)
+                continue
+
+    logger.info("Indexed %d tools from %d servers", total_tools, servers_indexed)
+
 
 # Register Tools
 mcp.tool()(search_knowledge)
@@ -110,6 +208,11 @@ def main() -> None:
         default="0.0.0.0",
         help="Host for SSE transport (default: 0.0.0.0)",
     )
+    parser.add_argument(
+        "--no-auto-index",
+        action="store_true",
+        help="Disable automatic MCP tools indexing on startup",
+    )
     args = parser.parse_args()
 
     # Configure logging to always use stderr and a debug file
@@ -149,7 +252,28 @@ def main() -> None:
         logger.info("Starting Nexus-Dev MCP server...")
         get_config()
         database = get_database()
-        get_mcp_config()
+        mcp_config = get_mcp_config()
+
+        # Auto-index MCP tools in background if enabled and config exists
+        if not args.no_auto_index and mcp_config:
+            # Find config path for logging
+            root = find_project_root()
+            local_path = (root if root else Path.cwd()) / ".nexus" / "mcp_config.json"
+            global_path = Path.home() / ".nexus" / "mcp_config.json"
+
+            config_path = (
+                local_path
+                if local_path.exists()
+                else (global_path if global_path.exists() else None)
+            )
+            logger.info("Found MCP config: %s", config_path or "unknown")
+            logger.info("Auto-indexing MCP tools...")
+
+            def run_index() -> None:
+                asyncio.run(_auto_index_mcp_tools())
+
+            index_thread = Thread(target=run_index, daemon=True)
+            index_thread.start()
 
         # Load and register custom agents
         # Find project root and look for agents directory
