@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import time
+from collections import OrderedDict
 from typing import Any
 
 from nexus_dev.app_state import (
@@ -16,6 +19,56 @@ from nexus_dev.database import DocumentType
 from nexus_dev.gateway.metrics import get_gateway_metrics
 
 logger = logging.getLogger(__name__)
+
+
+class SearchToolsCache:
+    """LRU cache with TTL for search_tools results."""
+
+    def __init__(
+        self,
+        ttl_seconds: float = 300.0,
+        max_entries: int = 1000,
+    ) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._max_entries = max_entries
+        self._cache: OrderedDict[str, tuple[float, Any]] = OrderedDict()
+
+    def _generate_key(self, query: str, server: str | None, limit: int) -> str:
+        key_data = json.dumps(
+            {"query": query, "server": server, "limit": limit},
+            sort_keys=True,
+        )
+        return hashlib.sha256(key_data.encode()).hexdigest()
+
+    def get(self, query: str, server: str | None, limit: int) -> Any | None:
+        key = self._generate_key(query, server, limit)
+        if key not in self._cache:
+            return None
+        expires_at, value = self._cache[key]
+        if time.monotonic() > expires_at:
+            del self._cache[key]
+            return None
+        self._cache.move_to_end(key)
+        return value
+
+    def set(self, query: str, server: str | None, limit: int, value: Any) -> None:
+        key = self._generate_key(query, server, limit)
+        expires_at = time.monotonic() + self._ttl_seconds
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        while len(self._cache) >= self._max_entries:
+            self._cache.popitem(last=False)
+        self._cache[key] = (expires_at, value)
+
+
+_search_tools_cache: SearchToolsCache | None = None
+
+
+def get_search_tools_cache() -> SearchToolsCache:
+    global _search_tools_cache
+    if _search_tools_cache is None:
+        _search_tools_cache = SearchToolsCache(ttl_seconds=300.0, max_entries=1000)
+    return _search_tools_cache
 
 
 async def list_servers() -> str:
@@ -99,8 +152,19 @@ async def search_tools(
     Returns:
         Matching tools with server, name, description, and parameters.
     """
-    database = get_database()
+    cache = get_search_tools_cache()
     limit = min(max(1, limit), 10)
+
+    # Check cache first
+    cached_result: str | None = cache.get(query, server, limit)
+    if cached_result is not None:
+        logger.info("[Cache] search_tools HIT for query='%s', server='%s'", query, server)
+        metrics = get_gateway_metrics()
+        metrics.record_search_tools()
+        return cached_result
+
+    logger.info("[Cache] search_tools MISS for query='%s', server='%s'", query, server)
+    database = get_database()
 
     # Search for tools
     results = await database.search(
@@ -127,9 +191,14 @@ async def search_tools(
     metrics.record_search_tools()
 
     if not results:
-        if server:
-            return f"No tools found matching: '{query}' in server: '{server}'"
-        return f"No tools found matching: '{query}'"
+        no_result_msg = (
+            f"No tools found matching: '{query}' in server: '{server}'"
+            if server
+            else f"No tools found matching: '{query}'"
+        )
+        # Cache the no-result response
+        cache.set(query, server, limit, no_result_msg)
+        return no_result_msg
 
     # Format output
     output_parts = [f"## MCP Tools matching: '{query}'", ""]
@@ -148,7 +217,12 @@ async def search_tools(
             output_parts.append("```")
         output_parts.append("")
 
-    return "\n".join(output_parts)
+    formatted_output = "\n".join(output_parts)
+
+    # Cache the result
+    cache.set(query, server, limit, formatted_output)
+
+    return formatted_output
 
 
 async def get_tool_schema(server: str, tool: str) -> str:
