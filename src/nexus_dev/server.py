@@ -25,7 +25,12 @@ from .app_state import (
 )
 from .mcp_client import MCPClientManager, MCPServerConnection
 from .tools.agents import ask_agent, list_agents, refresh_agents, register_agent_tools
-from .tools.context import get_recent_context
+from .tools.context import (
+    get_recent_context,
+    get_search_suggestions,
+    get_session_context,
+    set_session_context,
+)
 from .tools.github import import_github_issues
 from .tools.graph import (
     find_callers,
@@ -160,6 +165,9 @@ mcp.tool()(search_lessons)
 mcp.tool()(search_code)
 mcp.tool()(search_tools)
 mcp.tool()(get_recent_context)
+mcp.tool()(set_session_context)
+mcp.tool()(get_session_context)
+mcp.tool()(get_search_suggestions)
 mcp.tool()(smart_search)
 mcp.tool()(search_dependencies)
 mcp.tool()(find_callers)

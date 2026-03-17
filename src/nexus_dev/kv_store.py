@@ -217,6 +217,110 @@ class KVStore:
         # We don't need manual cleanup.
         return 0
 
+    # Session context methods
+
+    def _session_context_key(self, session_id: str) -> str:
+        return f"session_context:{session_id}"
+
+    def set_session_context(
+        self,
+        session_id: str,
+        current_task: str | None = None,
+        recent_files: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Store session context for search suggestions.
+
+        Args:
+            session_id: Session identifier
+            current_task: Current task description
+            recent_files: List of recently edited file paths
+            metadata: Additional context metadata
+        """
+        key = self._session_context_key(session_id)
+        now = datetime.now(UTC).isoformat()
+
+        existing = self.get_session_context(session_id)
+
+        context_data = {
+            "current_task": current_task
+            if current_task is not None
+            else (existing.get("current_task") if existing else None),
+            "recent_files": recent_files
+            if recent_files is not None
+            else (existing.get("recent_files") if existing else []),
+            "metadata": metadata
+            if metadata is not None
+            else (existing.get("metadata") if existing else {}),
+            "updated_at": now,
+        }
+
+        self.client.hset(
+            key,
+            mapping={
+                "current_task": context_data["current_task"] or "",
+                "recent_files": json.dumps(context_data["recent_files"]),
+                "metadata": json.dumps(context_data["metadata"]),
+                "updated_at": now,
+            },
+        )
+
+    def get_session_context(self, session_id: str) -> dict[str, Any]:
+        """Get session context.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Session context data or empty dict if not found
+        """
+        key = self._session_context_key(session_id)
+        data = self.client.hgetall(key)
+
+        if not data:
+            return {
+                "current_task": None,
+                "recent_files": [],
+                "metadata": {},
+                "updated_at": None,
+            }
+
+        return {
+            "current_task": data.get("current_task") or None,
+            "recent_files": json.loads(data.get("recent_files", "[]")),
+            "metadata": json.loads(data.get("metadata", "{}")),
+            "updated_at": data.get("updated_at"),
+        }
+
+    def add_recent_file(self, session_id: str, file_path: str, max_files: int = 10) -> None:
+        """Add a file to recent files list.
+
+        Args:
+            session_id: Session identifier
+            file_path: Path to add
+            max_files: Maximum number of recent files to keep
+        """
+        context = self.get_session_context(session_id)
+        recent_files = context.get("recent_files", [])
+
+        if file_path in recent_files:
+            recent_files.remove(file_path)
+
+        recent_files.insert(0, file_path)
+
+        if len(recent_files) > max_files:
+            recent_files = recent_files[:max_files]
+
+        self.set_session_context(session_id, recent_files=recent_files)
+
+    def delete_session_context(self, session_id: str) -> None:
+        """Delete session context.
+
+        Args:
+            session_id: Session identifier
+        """
+        self.client.delete(self._session_context_key(session_id))
+
     def close(self) -> None:
         """Close database connection."""
         try:

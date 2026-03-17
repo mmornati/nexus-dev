@@ -12,6 +12,7 @@ from nexus_dev.app_state import (
     get_config,
     get_database,
     get_embedder,
+    get_hybrid_db,
 )
 from nexus_dev.chunkers import ChunkerRegistry, ChunkType, CodeChunk
 from nexus_dev.database import Document, DocumentType, generate_document_id
@@ -580,6 +581,7 @@ async def record_implementation(
 async def get_project_context(
     project_id: str | None = None,
     limit: int = 10,
+    session_id: str | None = None,
 ) -> str:
     """Get recent lessons and discoveries for a project.
 
@@ -590,6 +592,7 @@ async def get_project_context(
     Args:
         project_id: Project identifier. Uses current project if not specified.
         limit: Maximum number of recent items to return (default: 10).
+        session_id: Optional session ID to include recent task context.
 
     Returns:
         Summary of project knowledge including statistics and recent lessons.
@@ -631,6 +634,26 @@ async def get_project_context(
             f"- Lessons: {stats.get('lesson', 0)}",
             "",
         ]
+
+        # Include session context if session_id provided
+        if session_id:
+            try:
+                hybrid_db = get_hybrid_db()
+                if hybrid_db.config.enable_hybrid_db:
+                    hybrid_db.connect()
+                    session_context = hybrid_db.kv.get_session_context(session_id)
+
+                    if session_context.get("current_task") or session_context.get("recent_files"):
+                        output_parts.append("### Current Session Context")
+                        if session_context.get("current_task"):
+                            output_parts.append(f"**Task:** {session_context['current_task']}")
+                        if session_context.get("recent_files"):
+                            output_parts.append("**Recent Files:**")
+                            for f in session_context["recent_files"][:5]:
+                                output_parts.append(f"  - {f}")
+                        output_parts.append("")
+            except Exception:
+                pass
 
         if recent_lessons:
             output_parts.append("### Recent Lessons")
