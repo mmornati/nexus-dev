@@ -13,6 +13,7 @@ from nexus_dev.app_state import (
     get_mcp_config,
 )
 from nexus_dev.database import DocumentType
+from nexus_dev.gateway.metrics import get_gateway_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +121,10 @@ async def search_tools(
     # Filter by server if specified
     if server and results:
         results = [r for r in results if r.server_name == server]
+
+    # Record the search_tools call for metrics
+    metrics = get_gateway_metrics()
+    metrics.record_search_tools()
 
     if not results:
         if server:
@@ -248,6 +253,10 @@ async def invoke_tool(
         return f"Server is disabled: {server}"
 
     conn_manager = get_connection_manager()
+
+    # Record the invoke_tool call for metrics
+    metrics = get_gateway_metrics()
+    metrics.record_invoke_tool(server)
 
     try:
         result = await conn_manager.invoke_tool(
