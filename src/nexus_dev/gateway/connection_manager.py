@@ -460,22 +460,31 @@ class ConnectionManager:
             MCPConnectionError: If connection fails after retries.
             MCPTimeoutError: If tool invocation times out.
         """
+        logger.info(
+            "[Gateway] Routing tool '%s' to server '%s' (transport: %s)",
+            tool,
+            name,
+            config.transport,
+        )
+
         cache = self._get_cache()
         # Check cache first
         if cache and self._is_cache_enabled(config) and not is_mutation_tool(tool):
             cached_result = cache.get(name, tool, arguments)
             if cached_result is not None:
-                logger.debug("[%s] Cache hit for %s", name, tool)
+                logger.info("[Gateway] Cache HIT for %s.%s", name, tool)
                 return cached_result
+            logger.info("[Gateway] Cache MISS for %s.%s", name, tool)
 
         # Execute the tool
+        logger.info("[Gateway] Executing tool '%s' on server '%s'", tool, name)
         connection = await self.get_connection(name, config)
         result = await connection.invoke_with_timeout(tool, arguments)
 
         # Cache the result if caching is enabled and tool is not a mutation
         if cache and self._is_cache_enabled(config) and not is_mutation_tool(tool):
             cache.set(name, tool, arguments, result)
-            logger.debug("[%s] Cached result for %s", name, tool)
+            logger.info("[Gateway] Cached result for %s.%s", name, tool)
 
         # Summarize the result to reduce token usage
         summarize_settings = self._get_summarize_settings(config)

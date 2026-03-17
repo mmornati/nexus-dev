@@ -221,6 +221,11 @@ def main() -> None:
         action="store_true",
         help="Disable automatic MCP tools indexing on startup",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable verbose debug logging for gateway operations",
+    )
     args = parser.parse_args()
 
     # Configure logging to always use stderr and a debug file
@@ -228,10 +233,12 @@ def main() -> None:
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # Stderr handler
+    # Determine log level based on --debug flag
+    log_level = logging.DEBUG if args.debug else logging.INFO
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(logging.Formatter(log_format))
+    stderr_handler.setLevel(log_level)
     root_logger.addHandler(stderr_handler)
 
     # File handler for persistent debugging
