@@ -649,6 +649,115 @@ class CohereEmbedder(EmbeddingProvider):
         return response.embeddings.float
 
 
+class OpenRouterEmbedder(EmbeddingProvider):
+    """OpenRouter embedding provider.
+
+    OpenRouter provides a unified API for embeddings from multiple providers.
+    This embedder uses the OpenAI-compatible API format.
+    """
+
+    DIMENSIONS_MAP = {
+        "openai/text-embedding-3-small": 1536,
+        "openai/text-embedding-3-large": 3072,
+        "openai/text-embedding-ada-002": 1536,
+        "cohere/embed-multilingual-v3.0": 1024,
+        "cohere/embed-english-v3.0": 1024,
+        "cohere/embed-english-light-v3.0": 384,
+        "cohere/embed-multilingual-light-v3.0": 384,
+    }
+
+    def __init__(
+        self,
+        model: str = "openai/text-embedding-3-small",
+        api_key: str | None = None,
+    ) -> None:
+        """Initialize OpenRouter embedder.
+
+        Args:
+            model: OpenRouter embedding model name (e.g., 'openai/text-embedding-3-small').
+            api_key: OpenRouter API key. If None, uses OPENROUTER_API_KEY env var.
+        """
+        self._model = model
+        self._api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
+        if not self._api_key:
+            raise ValueError(
+                "OpenRouter API key required. Set OPENROUTER_API_KEY environment variable "
+                "or pass api_key parameter."
+            )
+        self._client: httpx.AsyncClient | None = None
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    @property
+    def dimensions(self) -> int:
+        return self.DIMENSIONS_MAP.get(self._model, 1536)
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create async HTTP client."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                base_url="https://openrouter.ai/api/v1",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=60.0,
+            )
+        return self._client
+
+    async def embed(self, text: str) -> list[float]:
+        """Generate embedding for a single text using OpenRouter API."""
+        result = await self.embed_batch([text])
+        return result[0]
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Generate embeddings for multiple texts using OpenRouter API.
+
+        Args:
+            texts: List of texts to embed.
+
+        Returns:
+            List of embedding vectors.
+
+        Raises:
+            httpx.HTTPStatusError: If API request fails.
+        """
+        if not texts:
+            return []
+
+        client = await self._get_client()
+
+        batch_size = 100
+        all_embeddings: list[list[float]] = []
+
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+
+            response = await client.post(
+                "/embeddings",
+                json={
+                    "model": self._model,
+                    "input": batch,
+                },
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            sorted_data = sorted(data["data"], key=lambda x: x["index"])
+            batch_embeddings = [item["embedding"] for item in sorted_data]
+            all_embeddings.extend(batch_embeddings)
+
+        return all_embeddings
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+
 def validate_embedding_config(config: NexusConfig) -> tuple[bool, str | None]:
     """Validate embedding configuration before creating embedder.
 
@@ -684,6 +793,15 @@ def validate_embedding_config(config: NexusConfig) -> tuple[bool, str | None]:
     ):
         return False, (
             "Cohere embedding requires cohere_api_key in config or CO_API_KEY environment variable"
+        )
+    elif (
+        config.embedding_provider == "openrouter"
+        and not config.openrouter_api_key
+        and not os.environ.get("OPENROUTER_API_KEY")
+    ):
+        return False, (
+            "OpenRouter embedding requires openrouter_api_key in config "
+            "or OPENROUTER_API_KEY environment variable"
         )
     # ollama: No API key required (local server)
     # google: Uses gcloud default credentials (SDK handles it)
@@ -734,6 +852,11 @@ def create_embedder(config: NexusConfig) -> EmbeddingProvider:
         return CohereEmbedder(
             model=config.embedding_model,
             api_key=config.cohere_api_key,
+        )
+    elif config.embedding_provider == "openrouter":
+        return OpenRouterEmbedder(
+            model=config.embedding_model,
+            api_key=config.openrouter_api_key,
         )
     else:
         raise ValueError(f"Unsupported embedding provider: {config.embedding_provider}")
