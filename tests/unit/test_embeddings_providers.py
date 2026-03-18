@@ -7,9 +7,11 @@ from nexus_dev.config import NexusConfig
 from nexus_dev.embeddings import (
     BedrockEmbedder,
     CohereEmbedder,
+    OpenRouterEmbedder,
     VertexAIEmbedder,
     VoyageEmbedder,
     create_embedder,
+    validate_embedding_config,
 )
 
 
@@ -166,3 +168,134 @@ def test_create_embedder_factory():
         # We need to make sure import inside __init__ succeeds
         create_embedder(config)
         mock_vertex.assert_called()
+
+    # Test OpenRouter
+    config = NexusConfig(
+        project_id="test",
+        project_name="test",
+        embedding_provider="openrouter",
+        embedding_model="openai/text-embedding-3-small",
+        openrouter_api_key="test-key",
+    )
+
+    embedder = create_embedder(config)
+    assert isinstance(embedder, OpenRouterEmbedder)
+    assert embedder.model_name == "openai/text-embedding-3-small"
+
+
+# --- OpenRouter Tests ---
+def test_openrouter_embedder_init():
+    """Test OpenRouter embedder initialization."""
+    embedder = OpenRouterEmbedder(api_key="test-key")
+
+    assert embedder.model_name == "openai/text-embedding-3-small"
+    assert embedder.dimensions == 1536
+
+
+def test_openrouter_embedder_init_with_model():
+    """Test OpenRouter embedder with custom model."""
+    embedder = OpenRouterEmbedder(model="cohere/embed-multilingual-v3.0", api_key="test-key")
+
+    assert embedder.model_name == "cohere/embed-multilingual-v3.0"
+    assert embedder.dimensions == 1024
+
+
+def test_openrouter_embedder_requires_api_key():
+    """Test that OpenRouter embedder requires API key."""
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+        OpenRouterEmbedder()
+
+
+def test_openrouter_embedder_env_api_key(monkeypatch):
+    """Test that OpenRouter embedder uses environment variable."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "env-test-key")
+    embedder = OpenRouterEmbedder()
+
+    assert embedder._api_key == "env-test-key"
+
+
+async def test_openrouter_embedder_embed():
+    """Test OpenRouter embed single text."""
+    embedder = OpenRouterEmbedder(api_key="test-key")
+
+    mock_response = {"data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]}
+
+    mock_response_obj = MagicMock()
+    mock_response_obj.json.return_value = mock_response
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response_obj
+    embedder._client = mock_client
+
+    vec = await embedder.embed("hello")
+    assert vec == [0.1, 0.2, 0.3]
+
+
+async def test_openrouter_embedder_batch():
+    """Test OpenRouter embed batch of texts."""
+    embedder = OpenRouterEmbedder(api_key="test-key")
+
+    mock_response = {
+        "data": [
+            {"index": 0, "embedding": [0.1, 0.2, 0.3]},
+            {"index": 1, "embedding": [0.4, 0.5, 0.6]},
+        ]
+    }
+
+    mock_response_obj = MagicMock()
+    mock_response_obj.json.return_value = mock_response
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response_obj
+    embedder._client = mock_client
+
+    vectors = await embedder.embed_batch(["hello", "world"])
+    assert vectors == [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+
+
+async def test_openrouter_embedder_close():
+    """Test OpenRouter embedder close."""
+    embedder = OpenRouterEmbedder(api_key="test-key")
+
+    mock_client = AsyncMock()
+    mock_client.aclose = AsyncMock()
+    embedder._client = mock_client
+
+    await embedder.close()
+    mock_client.aclose.assert_called_once()
+
+
+# --- Validation Tests ---
+def test_validate_openrouter_config_with_key():
+    """Test validation passes with openrouter API key in config."""
+    config = NexusConfig(
+        project_id="test",
+        project_name="test",
+        embedding_provider="openrouter",
+        openrouter_api_key="test-key",
+    )
+
+    is_valid, error = validate_embedding_config(config)
+    assert is_valid is True
+    assert error is None
+
+
+def test_validate_openrouter_config_with_env(monkeypatch):
+    """Test validation passes with OPENROUTER_API_KEY env var."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "env-key")
+
+    config = NexusConfig(project_id="test", project_name="test", embedding_provider="openrouter")
+
+    is_valid, error = validate_embedding_config(config)
+    assert is_valid is True
+    assert error is None
+
+
+def test_validate_openrouter_config_missing_key():
+    """Test validation fails without openrouter API key."""
+    config = NexusConfig(project_id="test", project_name="test", embedding_provider="openrouter")
+
+    is_valid, error = validate_embedding_config(config)
+    assert is_valid is False
+    assert error is not None
+    assert "OPENROUTER_API_KEY" in error
