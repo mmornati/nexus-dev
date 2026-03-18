@@ -30,7 +30,9 @@ class NexusConfig:
 
     project_id: str
     project_name: str
-    embedding_provider: Literal["openai", "ollama", "google", "aws", "voyage", "cohere"] = "ollama"
+    embedding_provider: Literal[
+        "openai", "ollama", "google", "aws", "voyage", "cohere", "openrouter"
+    ] = "ollama"
     embedding_model: str = "text-embedding-3-small"
     ollama_url: str = "http://localhost:11434"
     ollama_batch_size: int = 10
@@ -46,6 +48,8 @@ class NexusConfig:
     voyage_api_key: str | None = None
     # Cohere configuration
     cohere_api_key: str | None = None
+    # OpenRouter configuration
+    openrouter_api_key: str | None = None
     db_path: str = "~/.nexus-dev/db"
     include_patterns: list[str] = field(
         default_factory=lambda: ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
@@ -72,7 +76,7 @@ class NexusConfig:
         cls,
         project_name: str,
         embedding_provider: Literal[
-            "openai", "ollama", "google", "aws", "voyage", "cohere"
+            "openai", "ollama", "google", "aws", "voyage", "cohere", "openrouter"
         ] = "openai",
         embedding_model: str | None = None,
     ) -> NexusConfig:
@@ -99,6 +103,7 @@ class NexusConfig:
                 "aws": "amazon.titan-embed-text-v1",
                 "voyage": "voyage-large-2",
                 "cohere": "embed-multilingual-v3.0",
+                "openrouter": "openai/text-embedding-3-small",
             }
             embedding_model = defaults.get(embedding_provider, "nomic-embed-text")
 
@@ -151,6 +156,7 @@ class NexusConfig:
             aws_secret_access_key=data.get("aws_secret_access_key"),
             voyage_api_key=data.get("voyage_api_key"),
             cohere_api_key=data.get("cohere_api_key"),
+            openrouter_api_key=data.get("openrouter_api_key"),
             db_path=data.get("db_path", "~/.nexus-dev/db"),
             include_patterns=data.get(
                 "include_patterns", ["**/*.py", "**/*.js", "**/*.ts", "**/*.java"]
@@ -206,6 +212,7 @@ class NexusConfig:
             "aws_secret_access_key": self.aws_secret_access_key,
             "voyage_api_key": self.voyage_api_key,
             "cohere_api_key": self.cohere_api_key,
+            "openrouter_api_key": self.openrouter_api_key,
             "db_path": self.db_path,
             "include_patterns": self.include_patterns,
             "exclude_patterns": self.exclude_patterns,
@@ -260,5 +267,11 @@ class NexusConfig:
             "embed-multilingual-v3.0": 1024,
             "embed-english-light-v3.0": 384,
             "embed-multilingual-light-v3.0": 384,
+            # OpenRouter (maps to underlying provider dimensions)
+            "openai/text-embedding-3-small": 1536,
+            "openai/text-embedding-3-large": 3072,
+            "openai/text-embedding-ada-002": 1536,
+            "cohere/embed-multilingual-v3.0": 1024,
+            "cohere/embed-english-v3.0": 1024,
         }
         return dimensions_map.get(self.embedding_model, 1536)
