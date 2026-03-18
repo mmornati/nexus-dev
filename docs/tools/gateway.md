@@ -26,7 +26,7 @@ flowchart LR
 
 ## search_tools
 
-Find MCP tools matching a description.
+Find MCP tools matching a description. Results are **cached** for 5 minutes to improve performance.
 
 ### Parameters
 
@@ -35,6 +35,10 @@ Find MCP tools matching a description.
 | `query` | string | ✅ | - | Natural language description |
 | `server` | string | | (all) | Filter to specific server |
 | `limit` | int | | `5` | Maximum results (max: 10) |
+
+### Caching
+
+Results are automatically cached for 300 seconds. This reduces redundant searches and improves response time for repeated queries.
 
 ### Example
 
@@ -176,6 +180,89 @@ list_servers()
 
 ---
 
+## get_gateway_prompt
+
+Get the gateway system prompt for LLM context injection. This prompt provides the AI with instructions on how to use the gateway tools effectively.
+
+### Example
+
+```
+get_gateway_prompt()
+```
+
+**Response:**
+
+```markdown
+## Nexus-Dev Gateway System Prompt
+
+You have access to Nexus-Dev, a gateway to multiple MCP (Model Context Protocol) servers...
+
+### Available Tools:
+- search_tools: Find the right tool for a task
+- invoke_tool: Execute a tool on a configured server
+- list_servers: Show available MCP servers
+...
+
+### Workflow:
+1. Use search_tools to find the appropriate tool
+2. Use get_tool_schema to understand parameters
+3. Use invoke_tool to execute the tool
+```
+
+### Use Case
+
+Inject this prompt into your LLM's system message to ensure it properly uses the gateway:
+
+```python
+# Get the gateway prompt
+gateway_prompt = get_gateway_prompt()
+
+# Include in your LLM's system message
+system_message = f"""
+You are an AI assistant with access to various tools.
+{gateway_prompt}
+"""
+```
+
+---
+
+## get_gateway_metrics
+
+Get gateway usage statistics including tool calls, cache performance, and server usage.
+
+### Example
+
+```
+get_gateway_metrics()
+```
+
+**Response:**
+
+```markdown
+Gateway Usage (last 24h):
+- search_tools calls: 42
+- invoke_tool calls: 156
+- Cache hits: 89 (56.3%)
+- Cache misses: 67
+
+Tools by server:
+- github: 98 calls
+- filesystem: 35 calls
+- homeassistant: 23 calls
+```
+
+### Metrics Tracked
+
+| Metric | Description |
+|--------|-------------|
+| `search_tools_calls` | Total search_tools invocations |
+| `invoke_tool_calls` | Total invoke_tool invocations |
+| `cache_hits` | Number of cache hits |
+| `cache_misses` | Number of cache misses |
+| `server_calls` | Tool invocations per server |
+
+---
+
 ## Gateway Workflow
 
 The typical workflow for using gateway mode:
@@ -203,6 +290,21 @@ Configure downstream servers in `.nexus/mcp_config.json`:
 
 ```json
 {
+  "version": "1.0",
+  "gateway": {
+    "default_timeout": 30.0,
+    "max_concurrent_connections": 5,
+    "cache": {
+      "enabled": true,
+      "ttl_seconds": 300,
+      "max_entries": 1000
+    },
+    "summarize": {
+      "enabled": true,
+      "max_list_items": 10,
+      "max_output_chars": 500
+    }
+  },
   "servers": {
     "github": {
       "transport": "stdio",
@@ -222,6 +324,12 @@ Configure downstream servers in `.nexus/mcp_config.json`:
 }
 ```
 
+See [Gateway Configuration](../advanced/gateway-config.md) for complete configuration reference including:
+- Gateway settings (timeout, caching, summarization)
+- Per-server overrides
+- Server profiles
+- Environment variables
+
 ---
 
 ## Benefits
@@ -237,6 +345,7 @@ Configure downstream servers in `.nexus/mcp_config.json`:
 
 ## See Also
 
+- [Gateway Configuration](../advanced/gateway-config.md) - Complete config reference
 - [nexus-mcp CLI](../cli/mcp.md) - Configure servers
 - [nexus-index-mcp CLI](../cli/index-mcp.md) - Index tool schemas
 - [Configuration](../getting-started/configuration.md#mcp-configuration) - Full setup guide

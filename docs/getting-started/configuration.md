@@ -190,6 +190,21 @@ For gateway mode, configure downstream MCP servers in `.nexus/mcp_config.json`:
 
 ```json
 {
+  "version": "1.0",
+  "gateway": {
+    "default_timeout": 30.0,
+    "max_concurrent_connections": 5,
+    "cache": {
+      "enabled": true,
+      "ttl_seconds": 300,
+      "max_entries": 1000
+    },
+    "summarize": {
+      "enabled": true,
+      "max_list_items": 10,
+      "max_output_chars": 500
+    }
+  },
   "servers": {
     "github": {
       "transport": "stdio",
@@ -198,7 +213,9 @@ For gateway mode, configure downstream MCP servers in `.nexus/mcp_config.json`:
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..."
       },
-      "enabled": true
+      "enabled": true,
+      "timeout": 30.0,
+      "connect_timeout": 10.0
     },
     "homeassistant": {
       "transport": "sse",
@@ -212,7 +229,26 @@ For gateway mode, configure downstream MCP servers in `.nexus/mcp_config.json`:
 }
 ```
 
-See [MCP Gateway](../tools/gateway.md) for usage details.
+### Gateway Settings
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `gateway.default_timeout` | float | 30.0 | Tool execution timeout (seconds) |
+| `gateway.max_concurrent_connections` | int | 5 | Max parallel tool calls |
+| `gateway.cache.enabled` | bool | true | Enable result caching |
+| `gateway.cache.ttl_seconds` | float | 300 | Cache TTL |
+| `gateway.summarize.enabled` | bool | true | Enable output summarization |
+| `gateway.summarize.max_output_chars` | int | 500 | Max output characters |
+
+### Server Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `server.timeout` | float | 30.0 | Per-server timeout override |
+| `server.cache` | object | null | Per-server cache override |
+| `server.summarize` | object | null | Per-server summarize override |
+
+See [MCP Gateway](../tools/gateway.md) and [Gateway Configuration](../advanced/gateway-config.md) for complete details.
 
 ---
 

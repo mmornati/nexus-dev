@@ -99,6 +99,7 @@ nav:
     - Multi-Repository Projects: advanced/multi-repo-projects.md
     - Custom Agents: advanced/agents.md
     - MCP Gateway Mode: advanced/gateway.md
+    - Gateway Configuration: advanced/gateway-config.md
     - Embedding Providers: advanced/embeddings.md
     - GitHub Integration: advanced/github.md
   - Reference:

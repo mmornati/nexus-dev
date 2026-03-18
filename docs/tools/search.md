@@ -176,6 +176,102 @@ search_implementations("authentication flow")
 
 ---
 
+## set_session_context
+
+Store session context for search suggestions. Use this to help Nexus-Dev provide relevant search recommendations based on the current task.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `session_id` | string | ✅ | - | Unique session identifier |
+| `current_task` | string | | - | Description of current task |
+| `recent_files` | array | | - | List of recently edited files |
+| `metadata` | object | | - | Additional context |
+
+### Example
+
+```
+set_session_context(
+    session_id="user-session-123",
+    current_task="Implement user authentication",
+    recent_files=["src/auth/login.py", "src/auth/jwt.py"],
+    metadata={"language": "python"}
+)
+```
+
+---
+
+## get_session_context
+
+Retrieve stored session context.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `session_id` | string | ✅ | - | Session ID |
+
+### Example
+
+```
+get_session_context(session_id="user-session-123")
+```
+
+**Response:**
+
+```markdown
+Session: user-session-123
+
+Current Task: Implement user authentication
+
+Recent Files:
+- src/auth/login.py
+- src/auth/jwt.py
+
+Metadata:
+- language: python
+```
+
+---
+
+## get_search_suggestions
+
+Get contextual search suggestions based on the current session.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `session_id` | string | ✅ | - | Session ID |
+| `limit` | int | | `5` | Max suggestions |
+
+### Example
+
+```
+get_search_suggestions(session_id="user-session-123")
+```
+
+**Response:**
+
+```markdown
+## Search Suggestions
+
+Based on your current task: "Implement user authentication"
+
+1. **search_code**: "JWT token validation function"
+2. **search_docs**: "authentication configuration"
+3. **search_lessons**: "previous authentication bugs"
+4. **search_knowledge**: "password hashing implementation"
+
+**Tip:** Use set_session_context to update your current task.
+```
+
+!!! tip "Session Context"
+    Set session context at the start of your work session to receive relevant search suggestions throughout your session.
+
+---
+
 ## Best Practices
 
 1. **Start broad, then narrow**: Use `search_knowledge` first, then switch to specific tools if needed.

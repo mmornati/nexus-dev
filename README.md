@@ -176,9 +176,11 @@ AI uses these Nexus-Dev tools to access other servers:
 
 | Tool | Description |
 |------|-------------|
-| `search_tools` | Find the right tool for a task |
+| `search_tools` | Find the right tool for a task (cached) |
 | `invoke_tool` | Execute a tool on any configured server |
 | `list_servers` | Show available MCP servers |
+| `get_gateway_prompt` | Get system prompt for LLM context injection |
+| `get_gateway_metrics` | Get gateway usage statistics |
 
 ### Workflow
 
@@ -194,6 +196,21 @@ You can configure downstream MCP servers in `.nexus/mcp_config.json` using eithe
 **Local Server (Stdio):**
 ```json
 {
+  "version": "1.0",
+  "gateway": {
+    "default_timeout": 30.0,
+    "max_concurrent_connections": 5,
+    "cache": {
+      "enabled": true,
+      "ttl_seconds": 300,
+      "max_entries": 1000
+    },
+    "summarize": {
+      "enabled": true,
+      "max_list_items": 10,
+      "max_output_chars": 500
+    }
+  },
   "servers": {
     "github-local": {
       "transport": "stdio",
@@ -201,26 +218,88 @@ You can configure downstream MCP servers in `.nexus/mcp_config.json` using eithe
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "..."
+      },
+      "enabled": true,
+      "timeout": 30.0,
+      "connect_timeout": 10.0,
+      "cache": {
+        "enabled": true,
+        "ttl_seconds": 600
+      },
+      "summarize": {
+        "enabled": true,
+        "max_output_chars": 1000
       }
-    }
-  }
-}
-```
-
-**Remote Server (SSE):**
-```json
-{
-  "servers": {
+    },
     "github-remote": {
       "transport": "sse",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
         "Authorization": "Bearer ..."
-      }
+      },
+      "enabled": true
     }
   }
 }
 ```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `version` | string | required | Config format version |
+| `gateway.default_timeout` | float | 30.0 | Tool execution timeout (seconds) |
+| `gateway.max_concurrent_connections` | int | 5 | Max parallel tool calls |
+| `gateway.cache.enabled` | bool | true | Enable result caching |
+| `gateway.cache.ttl_seconds` | float | 300 | Cache TTL (seconds) |
+| `gateway.cache.max_entries` | int | 1000 | Max cached results |
+| `gateway.summarize.enabled` | bool | true | Enable output summarization |
+| `gateway.summarize.max_list_items` | int | 10 | Max items in lists |
+| `gateway.summarize.max_output_chars` | int | 500 | Max output characters |
+| `server.cache` | object | null | Per-server cache override |
+| `server.summarize` | object | null | Per-server summarize override |
+| `server.timeout` | float | 30.0 | Per-server timeout |
+| `server.connect_timeout` | float | 10.0 | Connection timeout |
+| `server.max_concurrent` | int | null | Per-server concurrent limit |
+
+### Session Context & Search Suggestions
+
+Nexus-Dev can provide AI agents with contextual search suggestions based on current task:
+
+```python
+# Store current task context
+set_session_context(
+    session_id="user-session-123",
+    current_task="Implement user authentication",
+    recent_files=["src/auth/login.py", "src/auth/jwt.py"]
+)
+
+# Get search suggestions based on context
+get_search_suggestions(session_id="user-session-123")
+```
+
+### Gateway Debug Mode
+
+Enable verbose logging for troubleshooting:
+
+```bash
+nexus-dev --debug
+```
+
+Logs are written to `/tmp/nexus-dev-debug.log`.
+
+### Gateway Usage Metrics
+
+Track gateway tool usage with the `get_gateway_metrics` tool:
+
+```
+get_gateway_metrics()
+```
+
+Returns:
+- search_tools and invoke_tool call counts
+- Cache hit/miss statistics
+- Tool calls per server
 
 ## Configuration
 
