@@ -30,7 +30,7 @@ class NexusConfig:
 
     project_id: str
     project_name: str
-    embedding_provider: Literal["openai", "ollama", "google", "aws", "voyage", "cohere"] = "openai"
+    embedding_provider: Literal["openai", "ollama", "google", "aws", "voyage", "cohere"] = "ollama"
     embedding_model: str = "text-embedding-3-small"
     ollama_url: str = "http://localhost:11434"
     ollama_batch_size: int = 10
@@ -139,7 +139,7 @@ class NexusConfig:
         return cls(
             project_id=data["project_id"],
             project_name=data["project_name"],
-            embedding_provider=data.get("embedding_provider", "openai"),
+            embedding_provider=data.get("embedding_provider", "ollama"),
             embedding_model=data.get("embedding_model", "text-embedding-3-small"),
             ollama_url=data.get("ollama_url", "http://localhost:11434"),
             ollama_batch_size=data.get("ollama_batch_size", 10),

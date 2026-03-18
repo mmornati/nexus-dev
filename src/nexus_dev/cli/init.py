@@ -28,8 +28,8 @@ from nexus_dev.config import NexusConfig
 @click.option(
     "--embedding-provider",
     type=click.Choice(["openai", "ollama"]),
-    default="openai",
-    help="Embedding provider to use (default: openai)",
+    default="ollama",
+    help="Embedding provider to use (default: ollama)",
 )
 @click.option(
     "--install-hook/--no-hook",
@@ -203,7 +203,12 @@ def init_command(
     click.echo("")
     click.echo(f"Project ID: {config.project_id}")
 
-    if embedding_provider == "openai":
+    if embedding_provider == "ollama":
+        click.echo("")
+        click.echo(
+            "ℹ️  Using Ollama embeddings (local). Ensure Ollama is running at http://localhost:11434"
+        )
+    else:
         click.echo("")
         click.echo("⚠️  Using OpenAI embeddings. Ensure OPENAI_API_KEY is set.")
 
