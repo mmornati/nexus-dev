@@ -585,3 +585,78 @@ class TestMCPConnectionLogging:
 
         assert "[test-server] Queuing invoke_tool: my_tool" in caplog.text
         assert "[test-server] Tool invocation successful: my_tool" in caplog.text
+
+
+class TestConnectionManagerSummarizeSettings:
+    """Tests for summarize settings in ConnectionManager."""
+
+    def test_get_summarize_settings_default_disabled(self):
+        """Test that default summarize settings have enabled=False."""
+        manager = ConnectionManager()
+        config = MCPServerConfig(
+            command="test-server",
+            args=["--test"],
+        )
+
+        settings = manager._get_summarize_settings(config)
+
+        assert settings.enabled is False
+        assert settings.max_list_items == 10
+        assert settings.max_output_chars == 500
+
+    def test_get_summarize_settings_uses_gateway_config(self):
+        """Test that gateway summarize settings are used when no per-server override."""
+        from nexus_dev.mcp_config import SummarizeSettings
+
+        gateway_settings = SummarizeSettings(enabled=False, max_list_items=5, max_output_chars=100)
+        manager = ConnectionManager(summarize_settings=gateway_settings)
+        config = MCPServerConfig(
+            command="test-server",
+            args=["--test"],
+        )
+
+        settings = manager._get_summarize_settings(config)
+
+        assert settings.enabled is False
+        assert settings.max_list_items == 5
+        assert settings.max_output_chars == 100
+
+    def test_get_summarize_settings_per_server_override(self):
+        """Test that per-server summarize settings override gateway settings."""
+        from nexus_dev.mcp_config import SummarizeSettings
+
+        gateway_settings = SummarizeSettings(enabled=False, max_list_items=5, max_output_chars=100)
+        manager = ConnectionManager(summarize_settings=gateway_settings)
+        per_server_settings = SummarizeSettings(
+            enabled=True, max_list_items=20, max_output_chars=1000
+        )
+        config = MCPServerConfig(
+            command="test-server",
+            args=["--test"],
+            summarize=per_server_settings,
+        )
+
+        settings = manager._get_summarize_settings(config)
+
+        assert settings.enabled is True
+        assert settings.max_list_items == 20
+        assert settings.max_output_chars == 1000
+
+    def test_get_summarize_settings_gateway_enabled_per_server_disabled(self):
+        """Test per-server can disable summarize when gateway has it enabled."""
+        from nexus_dev.mcp_config import SummarizeSettings
+
+        gateway_settings = SummarizeSettings(enabled=True)
+        manager = ConnectionManager(summarize_settings=gateway_settings)
+        per_server_settings = SummarizeSettings(enabled=False)
+        config = MCPServerConfig(
+            command="test-server",
+            args=["--test"],
+            summarize=per_server_settings,
+        )
+
+        settings = manager._get_summarize_settings(config)
+
+        assert settings.enabled is False
+        assert settings.max_list_items == 10
+        assert settings.max_output_chars == 500

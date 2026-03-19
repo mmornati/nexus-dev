@@ -374,10 +374,15 @@ class ConnectionManager:
         return self._cache
 
     def _get_summarize_settings(self, config: MCPServerConfig) -> SummarizeSettings:
-        """Get summarize settings for this server."""
+        """Get summarize settings for this server.
+
+        Priority: per-server config > gateway config > default (disabled).
+        """
         if config.summarize is not None:
             return config.summarize
-        return SummarizeSettings()
+        if self._summarize_settings is not None:
+            return self._summarize_settings
+        return SummarizeSettings(enabled=False)
 
     def _get_max_concurrent(self, config: MCPServerConfig) -> int:
         """Get max concurrent setting for a server (per-server or default)."""
