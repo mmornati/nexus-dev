@@ -152,7 +152,10 @@ async def _auto_index_mcp_tools() -> None:
                 logger.info("Indexed %d tools from %s", len(tools), name)
 
             except Exception as e:
-                logger.warning("Failed to index tools from %s: %s", name, e)
+                logger.warning("Failed to index tools from %s: %s", name, e, exc_info=True)
+                continue
+            except BaseExceptionGroup as e:
+                logger.warning("Failed to index tools from %s: %s", name, e, exc_info=True)
                 continue
 
     logger.info("Indexed %d tools from %d servers", total_tools, servers_indexed)
@@ -285,7 +288,12 @@ def main() -> None:
             logger.info("Auto-indexing MCP tools...")
 
             def run_index() -> None:
-                asyncio.run(_auto_index_mcp_tools())
+                try:
+                    asyncio.run(_auto_index_mcp_tools())
+                except Exception as e:
+                    logger.warning("Error during auto-index: %s", e, exc_info=True)
+                except BaseExceptionGroup as e:
+                    logger.warning("Error during auto-index: %s", e, exc_info=True)
 
             index_thread = Thread(target=run_index, daemon=True)
             index_thread.start()
