@@ -304,12 +304,15 @@ def main() -> None:
 
         # Run server with selected transport
         if args.transport == "sse":
+            # Configure host and port via settings (FastMCP.run() doesn't accept these directly)
+            mcp.settings.host = args.host
+            mcp.settings.port = args.port
             logger.info(
                 "Server initialization complete, running SSE transport on %s:%d",
                 args.host,
                 args.port,
             )
-            mcp.run(transport="sse", host=args.host, port=args.port)  # type: ignore
+            mcp.run(transport="sse")
         else:
             logger.info("Server initialization complete, running stdio transport")
             mcp.run(transport="stdio")
