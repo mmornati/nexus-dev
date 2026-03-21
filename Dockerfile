@@ -12,8 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for fast package management
+# Install uv and uvx for fast package management
 RUN pip install --no-cache-dir uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 
 # Copy project files
 COPY pyproject.toml README.md LICENSE ./
